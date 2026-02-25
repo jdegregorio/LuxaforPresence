@@ -2,7 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>userId</key>
+    <key>transportMode</key>
+    <string>local</string>
+    <key>localWebhookBaseUrl</key>
+    <string>http://127.0.0.1:5383</string>
+    <key>localWebhookToken</key>
+    <string>luxafor</string>
+    <key>remoteWebhookUserId</key>
     <string>YOUR_USER_ID_HERE</string>
     <key>pollInterval</key>
     <real>2</real>
@@ -20,5 +26,19 @@
     <false/>
     <key>debugAssumeFrontmostImpliesMic</key>
     <false/>
+    <key>enabledMeetingDetectors</key>
+    <array>
+        <string>Zoom</string>
+        <string>Webex</string>
+        <string>Teams</string>
+        <string>Slack</string>
+        <string>GoogleMeet</string>
+    </array>
+    <key>vadEnabled</key>
+    <true/>
+    <key>vadThreshold</key>
+    <real>0.02</real>
+    <key>vadGraceSeconds</key>
+    <real>10</real>
 </dict>
 </plist>
