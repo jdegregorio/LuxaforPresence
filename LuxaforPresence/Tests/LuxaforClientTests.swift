@@ -108,6 +108,32 @@ final class LuxaforClientTests: XCTestCase {
         XCTAssertEqual(finalCount, 1)
     }
 
+    func test_sameColorForDifferentRemoteUsers_isSentForEachUser() {
+        let requestsReceived = expectation(description: "both users received requests")
+        requestsReceived.expectedFulfillmentCount = 2
+        let lock = NSLock()
+        var receivedUserIds: [String] = []
+        TestURLProtocol.handler = { request, protocolInstance in
+            let payload = try XCTUnwrap(Self.jsonBody(from: request))
+            let userId = try XCTUnwrap(payload["userId"] as? String)
+            lock.lock()
+            receivedUserIds.append(userId)
+            lock.unlock()
+            protocolInstance.respond(statusCode: 200)
+            requestsReceived.fulfill()
+        }
+
+        let client = LuxaforClient(session: makeSession())
+        client.turnOnRed(userId: "first-user")
+        client.turnOnRed(userId: "second-user")
+
+        wait(for: [requestsReceived], timeout: 2)
+        lock.lock()
+        let finalUserIds = receivedUserIds
+        lock.unlock()
+        XCTAssertEqual(finalUserIds, ["first-user", "second-user"])
+    }
+
     func test_supersededFailure_doesNotRetryStaleState() {
         let redStarted = expectation(description: "red request started")
         let offConfirmed = expectation(description: "off request confirmed")

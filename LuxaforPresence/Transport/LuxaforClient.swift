@@ -29,7 +29,8 @@ final class LuxaforClient: LuxaforClientProtocol {
     }
 
     private func post(color: LuxaforColor, userId: String) {
-        sender.send(identifier: color.hex, actionDescription: color.hex) { [endpoint] in
+        let deliveryIdentifier = "\(userId)\u{0}\(color.hex)"
+        sender.send(identifier: deliveryIdentifier, actionDescription: color.hex) { [endpoint] in
             var request = URLRequest(url: endpoint, timeoutInterval: 10)
             request.httpMethod = "POST"
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
