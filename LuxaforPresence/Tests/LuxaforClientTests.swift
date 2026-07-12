@@ -147,8 +147,8 @@ final class LuxaforClientTests: XCTestCase {
         client.turnOnRed(userId: "test-user")
         wait(for: [redStarted], timeout: 2)
         client.turnOff(userId: "test-user")
-        wait(for: [offConfirmed], timeout: 2)
         releaseRed.signal()
+        wait(for: [offConfirmed], timeout: 2)
 
         wait(for: [staleRetry], timeout: 0.5)
         lock.lock()

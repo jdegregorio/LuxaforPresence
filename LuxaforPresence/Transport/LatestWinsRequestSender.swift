@@ -6,12 +6,18 @@ import OSLog
 final class LatestWinsRequestSender {
     typealias RequestFactory = () throws -> URLRequest
 
+    private struct DesiredRequest {
+        let identifier: String
+        let actionDescription: String
+        let requestFactory: RequestFactory
+    }
+
     private let session: URLSession
     private let logger: Logger
     private let queue = DispatchQueue(label: "com.example.LuxaforPresence.webhook-delivery")
 
     private var generation: UInt64 = 0
-    private var desiredIdentifier: String?
+    private var desiredRequest: DesiredRequest?
     private var confirmedIdentifier: String?
     private var inFlightTask: URLSessionDataTask?
     private var retryScheduled = false
@@ -27,7 +33,7 @@ final class LatestWinsRequestSender {
         requestFactory: @escaping RequestFactory
     ) {
         queue.async {
-            if self.desiredIdentifier == identifier,
+            if self.desiredRequest?.identifier == identifier,
                self.inFlightTask != nil || self.retryScheduled || self.confirmedIdentifier == identifier {
                 self.logger.debug("Coalescing duplicate webhook state \(actionDescription, privacy: .public)")
                 return
@@ -35,10 +41,18 @@ final class LatestWinsRequestSender {
 
             self.generation &+= 1
             let generation = self.generation
-            self.desiredIdentifier = identifier
-            self.inFlightTask?.cancel()
-            self.inFlightTask = nil
+            self.desiredRequest = DesiredRequest(
+                identifier: identifier,
+                actionDescription: actionDescription,
+                requestFactory: requestFactory
+            )
             self.retryScheduled = false
+            guard self.inFlightTask == nil else {
+                self.logger.debug(
+                    "Queued webhook state \(actionDescription, privacy: .public) behind the in-flight request"
+                )
+                return
+            }
             self.perform(
                 generation: generation,
                 identifier: identifier,
@@ -56,7 +70,7 @@ final class LatestWinsRequestSender {
         attempt: Int,
         requestFactory: @escaping RequestFactory
     ) {
-        guard generation == self.generation, desiredIdentifier == identifier else { return }
+        guard generation == self.generation, desiredRequest?.identifier == identifier else { return }
 
         let request: URLRequest
         do {
@@ -98,11 +112,12 @@ final class LatestWinsRequestSender {
         response: URLResponse?,
         error: Error?
     ) {
-        guard generation == self.generation, desiredIdentifier == identifier else {
-            logger.debug("Ignoring completion for superseded webhook state \(actionDescription, privacy: .public)")
+        inFlightTask = nil
+        guard generation == self.generation, desiredRequest?.identifier == identifier else {
+            logger.debug("Completed superseded webhook state \(actionDescription, privacy: .public); sending the queued state")
+            sendCurrentDesiredState()
             return
         }
-        inFlightTask = nil
 
         if let httpResponse = response as? HTTPURLResponse,
            (200..<300).contains(httpResponse.statusCode),
@@ -137,7 +152,7 @@ final class LatestWinsRequestSender {
         }
 
         queue.asyncAfter(deadline: .now() + delay) {
-            guard generation == self.generation, self.desiredIdentifier == identifier else { return }
+            guard generation == self.generation, self.desiredRequest?.identifier == identifier else { return }
             self.retryScheduled = false
             self.perform(
                 generation: generation,
@@ -147,6 +162,18 @@ final class LatestWinsRequestSender {
                 requestFactory: requestFactory
             )
         }
+    }
+
+    private func sendCurrentDesiredState() {
+        guard inFlightTask == nil, let desiredRequest else { return }
+        retryScheduled = false
+        perform(
+            generation: generation,
+            identifier: desiredRequest.identifier,
+            actionDescription: desiredRequest.actionDescription,
+            attempt: 1,
+            requestFactory: desiredRequest.requestFactory
+        )
     }
 
     private func shouldRetry(statusCode: Int?, error: Error?) -> Bool {
