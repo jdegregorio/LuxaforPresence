@@ -17,7 +17,10 @@ final class PresenceEngine {
         var vadGraceSeconds: TimeInterval
         private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "Config")
 
-        init() {
+        init(
+            userConfigURLs: [URL]? = nil,
+            bundledConfigBundle: Bundle = .module,
+        ) {
             // Default values
             transportMode = .local
             localWebhookBaseUrl = "http://127.0.0.1:5383"
@@ -43,7 +46,7 @@ final class PresenceEngine {
             // Try to load from user's config directory first
             let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("LuxaforPresence/config.plist")
             let dotConfigURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/LuxaforPresence/config.plist")
-            let candidateURLs = [dotConfigURL, appSupportURL].compactMap { $0 }
+            let candidateURLs = userConfigURLs ?? [dotConfigURL, appSupportURL].compactMap { $0 }
 
             if let userConfigURL = candidateURLs.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
                let userConfig = NSDictionary(contentsOf: userConfigURL) as? [String: Any] {
@@ -91,7 +94,7 @@ final class PresenceEngine {
                 } else if let grace = userConfig["vadGraceSeconds"] as? NSNumber {
                     vadGraceSeconds = grace.doubleValue
                 }
-            } else if let bundledConfigURL = Bundle.main.url(forResource: "config", withExtension: "plist"),
+            } else if let bundledConfigURL = bundledConfigBundle.url(forResource: "config", withExtension: "plist"),
                       let bundledConfig = NSDictionary(contentsOf: bundledConfigURL) as? [String: Any] {
                 logger.log("Loaded config from bundled resource at \(bundledConfigURL.path, privacy: .public)")
                 // Fallback to bundled config
