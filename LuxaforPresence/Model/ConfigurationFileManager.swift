@@ -14,24 +14,35 @@ struct ConfigurationFileManager {
 
     let configurationURL: URL
     private let fileManager: FileManager
+    private let alternateConfigurationURLs: [URL]
     private let bundledTemplateURL: () -> URL?
 
     init(
         configurationURL: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/LuxaforPresence/config.plist"),
         fileManager: FileManager = .default,
+        alternateConfigurationURLs: [URL] = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).map { $0.appendingPathComponent("LuxaforPresence/config.plist") },
         bundledTemplateURL: @escaping () -> URL? = {
             Bundle.module.url(forResource: "config", withExtension: "plist")
         }
     ) {
         self.configurationURL = configurationURL
         self.fileManager = fileManager
+        self.alternateConfigurationURLs = alternateConfigurationURLs
         self.bundledTemplateURL = bundledTemplateURL
     }
 
     func createFromTemplateIfNeeded() throws -> URL {
         if fileManager.fileExists(atPath: configurationURL.path) {
             return configurationURL
+        }
+        if let existingAlternateURL = alternateConfigurationURLs.first(where: {
+            fileManager.fileExists(atPath: $0.path)
+        }) {
+            return existingAlternateURL
         }
 
         let directoryURL = configurationURL.deletingLastPathComponent()

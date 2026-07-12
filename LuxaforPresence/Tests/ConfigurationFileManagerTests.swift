@@ -20,6 +20,7 @@ final class ConfigurationFileManagerTests: XCTestCase {
         try Data("template".utf8).write(to: templateURL)
         let manager = ConfigurationFileManager(
             configurationURL: configurationURL,
+            alternateConfigurationURLs: [],
             bundledTemplateURL: { templateURL }
         )
 
@@ -36,6 +37,7 @@ final class ConfigurationFileManagerTests: XCTestCase {
         try Data("user settings".utf8).write(to: configurationURL)
         let manager = ConfigurationFileManager(
             configurationURL: configurationURL,
+            alternateConfigurationURLs: [],
             bundledTemplateURL: {
                 XCTFail("Existing configuration should not load the template")
                 return nil
@@ -47,9 +49,34 @@ final class ConfigurationFileManagerTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: configurationURL), "user settings")
     }
 
+    func test_createFromTemplateIfNeeded_preservesAlternateApplicationSupportConfiguration() throws {
+        let preferredURL = temporaryDirectoryURL.appendingPathComponent("dot-config/config.plist")
+        let alternateURL = temporaryDirectoryURL.appendingPathComponent("application-support/config.plist")
+        try FileManager.default.createDirectory(
+            at: alternateURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("existing settings".utf8).write(to: alternateURL)
+        let manager = ConfigurationFileManager(
+            configurationURL: preferredURL,
+            alternateConfigurationURLs: [alternateURL],
+            bundledTemplateURL: {
+                XCTFail("An existing alternate configuration should not load the template")
+                return nil
+            }
+        )
+
+        let result = try manager.createFromTemplateIfNeeded()
+
+        XCTAssertEqual(result, alternateURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: preferredURL.path))
+        XCTAssertEqual(try String(contentsOf: alternateURL), "existing settings")
+    }
+
     func test_createFromTemplateIfNeeded_reportsMissingTemplate() {
         let manager = ConfigurationFileManager(
             configurationURL: temporaryDirectoryURL.appendingPathComponent("config.plist"),
+            alternateConfigurationURLs: [],
             bundledTemplateURL: { nil }
         )
 
