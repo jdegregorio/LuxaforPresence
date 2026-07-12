@@ -110,6 +110,11 @@ Open System Settings → Privacy & Security → Accessibility, then enable this 
             let configurationURL = try configurationFileManager.createFromTemplateIfNeeded()
             NSWorkspace.shared.activateFileViewerSelecting([configurationURL])
             logger.info("Opened the user configuration file in Finder")
+            let alert = NSAlert()
+            alert.messageText = "Restart After Editing"
+            alert.informativeText = "LuxaforPresence loads configuration when it starts. After saving your changes, quit and reopen the app to apply them."
+            alert.alertStyle = .informational
+            alert.runModal()
         } catch {
             logger.error("Unable to prepare the user configuration file: \(error.localizedDescription, privacy: .public)")
             let alert = NSAlert()
