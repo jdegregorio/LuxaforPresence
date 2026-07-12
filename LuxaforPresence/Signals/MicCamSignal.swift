@@ -102,13 +102,15 @@ final class MicCamSignal: MicCamSignalProtocol {
 
     private func defaultInputDeviceID() -> AudioDeviceID? {
         var dev = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let expectedSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var size = expectedSize
         var addr = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &dev) == noErr,
+              size == expectedSize,
               dev != 0 else { return nil }
         return dev
     }
@@ -134,12 +136,28 @@ final class MicCamSignal: MicCamSignalProtocol {
         guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &dataSize) == noErr else {
             return []
         }
-        let count = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        let elementSize = UInt32(MemoryLayout<AudioDeviceID>.stride)
+        guard dataSize > 0, dataSize % elementSize == 0 else { return [] }
+        let allocatedSize = dataSize
+        let count = Int(dataSize / elementSize)
         var deviceIDs = [AudioDeviceID](repeating: 0, count: count)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &dataSize, &deviceIDs) == noErr else {
+        let status = deviceIDs.withUnsafeMutableBytes { bytes -> OSStatus in
+            guard let baseAddress = bytes.baseAddress else { return kAudioHardwareUnspecifiedError }
+            return AudioObjectGetPropertyData(
+                AudioObjectID(kAudioObjectSystemObject),
+                &addr,
+                0,
+                nil,
+                &dataSize,
+                baseAddress
+            )
+        }
+        guard status == noErr,
+              dataSize <= allocatedSize,
+              dataSize % elementSize == 0 else {
             return []
         }
-        return deviceIDs
+        return Array(deviceIDs.prefix(Int(dataSize / elementSize)))
     }
 
     private func audioDeviceName(_ id: AudioDeviceID) -> String? {
@@ -148,10 +166,28 @@ final class MicCamSignal: MicCamSignalProtocol {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        var name: CFString = "" as CFString
-        var size = UInt32(MemoryLayout<CFString>.size)
-        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &name) == noErr else { return nil }
-        return name as String
+        let expectedSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &addr, 0, nil, &size) == noErr,
+              size == expectedSize else { return nil }
+
+        var retainedName: Unmanaged<CFString>?
+        let status = withUnsafeMutablePointer(to: &retainedName) { pointer in
+            AudioObjectGetPropertyData(
+                id,
+                &addr,
+                0,
+                nil,
+                &size,
+                UnsafeMutableRawPointer(pointer)
+            )
+        }
+        guard status == noErr, size == expectedSize, let retainedName else {
+            retainedName?.release()
+            return nil
+        }
+        // CoreAudio's property contract transfers ownership of returned CF objects to the caller.
+        return retainedName.takeRetainedValue() as String
     }
 
     private func audioDeviceIsRunning(_ id: AudioDeviceID) -> Bool {
@@ -161,8 +197,10 @@ final class MicCamSignal: MicCamSignalProtocol {
             mElement: kAudioObjectPropertyElementMain
         )
         var running: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &running) == noErr else { return false }
+        let expectedSize = UInt32(MemoryLayout<UInt32>.size)
+        var size = expectedSize
+        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &running) == noErr,
+              size == expectedSize else { return false }
         return running != 0
     }
 
@@ -228,17 +266,21 @@ final class MicCamSignal: MicCamSignalProtocol {
         guard CMIOObjectGetPropertyDataSize(systemCMIOObjectID, &addr, 0, nil, &dataSize) == noErr else {
             return []
         }
-        let count = Int(dataSize) / MemoryLayout<CMIOObjectID>.size
+        let elementSize = UInt32(MemoryLayout<CMIOObjectID>.stride)
+        guard dataSize > 0, dataSize % elementSize == 0 else { return [] }
+        let count = Int(dataSize / elementSize)
         var deviceIDs = [CMIOObjectID](repeating: 0, count: count)
         var dataUsed: UInt32 = 0
         let status = deviceIDs.withUnsafeMutableBytes { bytes -> OSStatus in
             guard let base = bytes.baseAddress else { return OSStatus(kCMIOHardwareUnspecifiedError) }
             return CMIOObjectGetPropertyData(systemCMIOObjectID, &addr, 0, nil, dataSize, &dataUsed, base)
         }
-        guard status == noErr else {
+        guard status == noErr,
+              dataUsed <= dataSize,
+              dataUsed % elementSize == 0 else {
             return []
         }
-        return deviceIDs
+        return Array(deviceIDs.prefix(Int(dataUsed / elementSize)))
     }
 
     private func cmioDeviceUID(_ id: CMIOObjectID) -> String? {
@@ -261,21 +303,43 @@ final class MicCamSignal: MicCamSignalProtocol {
 
     private func cmioCopyString(objectID: CMIOObjectID, selector: CMIOObjectPropertySelector) -> String? {
         var addr = cmioAddress(selector: selector)
-        let dataSize = UInt32(MemoryLayout<CFString?>.size)
+        let expectedSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        var dataSize: UInt32 = 0
+        guard CMIOObjectGetPropertyDataSize(objectID, &addr, 0, nil, &dataSize) == noErr,
+              dataSize == expectedSize else { return nil }
+
         var dataUsed: UInt32 = 0
-        var value: CFString?
-        let status = CMIOObjectGetPropertyData(objectID, &addr, 0, nil, dataSize, &dataUsed, &value)
-        guard status == noErr, let cfValue = value else { return nil }
-        return cfValue as String
+        var retainedValue: Unmanaged<CFString>?
+        let status = withUnsafeMutablePointer(to: &retainedValue) { pointer in
+            CMIOObjectGetPropertyData(
+                objectID,
+                &addr,
+                0,
+                nil,
+                dataSize,
+                &dataUsed,
+                UnsafeMutableRawPointer(pointer)
+            )
+        }
+        guard status == noErr, dataUsed == expectedSize, let retainedValue else {
+            retainedValue?.release()
+            return nil
+        }
+        // CoreMediaIO's property contract transfers ownership of returned CF objects to the caller.
+        return retainedValue.takeRetainedValue() as String
     }
 
     private func cmioCopyUInt32(objectID: CMIOObjectID, selector: CMIOObjectPropertySelector) -> UInt32? {
         var addr = cmioAddress(selector: selector)
-        let dataSize = UInt32(MemoryLayout<UInt32>.size)
+        let expectedSize = UInt32(MemoryLayout<UInt32>.size)
+        var dataSize: UInt32 = 0
+        guard CMIOObjectGetPropertyDataSize(objectID, &addr, 0, nil, &dataSize) == noErr,
+              dataSize == expectedSize else { return nil }
+
         var dataUsed: UInt32 = 0
         var value: UInt32 = 0
         let status = CMIOObjectGetPropertyData(objectID, &addr, 0, nil, dataSize, &dataUsed, &value)
-        guard status == noErr else { return nil }
+        guard status == noErr, dataUsed == expectedSize else { return nil }
         return value
     }
 

@@ -77,7 +77,7 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
         var attributeEmptyCounts: [String: Int] = [:]
         var attributeNonStringCounts: [String: Int] = [:]
         var childrenFetchErrorCount = 0
-        var childrenNonArrayCount = 0
+        var malformedChildrenCount = 0
         var childBucketZero = 0
         var childBucketSmall = 0
         var childBucketMedium = 0
@@ -170,7 +170,7 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
             let children = children(
                 of: element,
                 fetchErrorCount: &childrenFetchErrorCount,
-                nonArrayCount: &childrenNonArrayCount
+                malformedValueCount: &malformedChildrenCount
             )
             let childCount = children?.count ?? 0
             if childCount == 0 {
@@ -200,7 +200,7 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
             "AX snapshot attributes: pid=\(pid, privacy: .public) errors=\(self.formatCounts(attributeErrorCounts), privacy: .public) empty=\(self.formatCounts(attributeEmptyCounts), privacy: .public) nonString=\(self.formatCounts(attributeNonStringCounts), privacy: .public)"
         )
         logger.debug(
-            "AX snapshot children: pid=\(pid, privacy: .public) zero=\(childBucketZero) small=\(childBucketSmall) medium=\(childBucketMedium) large=\(childBucketLarge) fetchErrors=\(childrenFetchErrorCount) nonArray=\(childrenNonArrayCount)"
+            "AX snapshot children: pid=\(pid, privacy: .public) zero=\(childBucketZero) small=\(childBucketSmall) medium=\(childBucketMedium) large=\(childBucketLarge) fetchErrors=\(childrenFetchErrorCount) malformed=\(malformedChildrenCount)"
         )
         return nodes
     }
@@ -272,7 +272,7 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
     private func children(
         of element: AXUIElement,
         fetchErrorCount: inout Int,
-        nonArrayCount: inout Int
+        malformedValueCount: inout Int
     ) -> [AXUIElement]? {
         var value: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value)
@@ -284,9 +284,11 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
             return children
         }
         if let array = value as? [Any] {
-            return array.map { $0 as! AXUIElement }
+            let children = AXValueDecoder.elements(from: array)
+            malformedValueCount += array.count - children.count
+            return children
         }
-        nonArrayCount += 1
+        malformedValueCount += 1
         return nil
     }
 
@@ -296,5 +298,20 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
             .sorted { $0.key < $1.key }
             .map { "\($0.key)=\($0.value)" }
             .joined(separator: ",")
+    }
+}
+
+enum AXValueDecoder {
+    static func elements(from values: [Any]) -> [AXUIElement] {
+        values.compactMap(element(from:))
+    }
+
+    private static func element(from value: Any) -> AXUIElement? {
+        let cfValue = value as CFTypeRef
+        guard CFGetTypeID(cfValue) == AXUIElementGetTypeID() else { return nil }
+
+        // Swift cannot conditionally cast CF types, so reinterpret only after validating the type ID.
+        let opaqueValue = Unmanaged.passUnretained(cfValue).toOpaque()
+        return Unmanaged<AXUIElement>.fromOpaque(opaqueValue).takeUnretainedValue()
     }
 }
