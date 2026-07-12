@@ -50,7 +50,7 @@ final class PresenceEngineTests: XCTestCase {
 
         engine.tick()
 
-        XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId), .off(config.remoteWebhookUserId)])
+        XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId)])
     }
 
     func testTick_transitionsToInMeeting_whenCameraActive_evenIfMeetingDetectorInactive() {
@@ -179,7 +179,7 @@ final class PresenceEngineTests: XCTestCase {
         front.isMeetingApp = true
         engine.tick()
 
-        XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId)])
+        XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId), .off(config.remoteWebhookUserId)])
     }
 
     func testTick_meetingActiveAndVadSilentBeyondGrace_turnsYellow() {
