@@ -2,7 +2,7 @@ import ApplicationServices
 import XCTest
 @testable import LuxaforPresence
 
-final class AccessibilitySnapshotTests: XCTestCase {
+final class AccessibilityValueDecoderTests: XCTestCase {
     func test_MalformedChildValues_FiltersNonAccessibilityElements() {
         let element = AXUIElementCreateApplication(ProcessInfo.processInfo.processIdentifier)
 
