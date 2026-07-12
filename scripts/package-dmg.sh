@@ -29,6 +29,16 @@ if [[ $# -ne 0 ]]; then
     usage
 fi
 
+if [[ "${CONFIGURATION}" != "debug" && "${CONFIGURATION}" != "release" ]]; then
+    echo "Configuration must be debug or release." >&2
+    exit 1
+fi
+
+if [[ ! "${DMG_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._\ -]*$ ]]; then
+    echo "Volume name contains unsupported characters." >&2
+    exit 1
+fi
+
 if ! command -v swift >/dev/null 2>&1; then
     echo "swift command not found; install Xcode or the CLT." >&2
     exit 1
@@ -47,7 +57,6 @@ APP_DIR="${DIST_DIR}/${PRODUCT_NAME}.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
-DMG_STAGING="${DIST_DIR}/dmg-src"
 DMG_PATH="${DIST_DIR}/${DMG_NAME}.dmg"
 
 echo "Building ${PRODUCT_NAME} (${CONFIGURATION})…"
@@ -79,15 +88,6 @@ if [[ -f "${CONFIG_SAMPLE}" ]]; then
 fi
 
 echo "Creating dmg at ${DMG_PATH}…"
-rm -rf "${DMG_STAGING}" "${DMG_PATH}"
-mkdir -p "${DMG_STAGING}"
-cp -R "${APP_DIR}" "${DMG_STAGING}/"
-
-hdiutil create \
-    -volname "${DMG_NAME}" \
-    -srcfolder "${DMG_STAGING}" \
-    -ov \
-    -format UDZO \
-    "${DMG_PATH}" >/dev/null
+"${REPO_ROOT}/scripts/create-dmg.sh" "${APP_DIR}" "${DMG_PATH}" "${DMG_NAME}"
 
 echo "Done. Mount ${DMG_PATH} to install ${PRODUCT_NAME}.app."
