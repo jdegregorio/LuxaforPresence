@@ -235,7 +235,9 @@ final class PresenceEngine {
         logger.debug("Tick start; forced state \(String(describing: self.forcedState), privacy: .public)")
         if let s = self.forcedState {
             logger.debug("Forced state active; bypassing signals")
-            apply(s)
+            if s != lastState {
+                apply(s)
+            }
             return
         }
 
