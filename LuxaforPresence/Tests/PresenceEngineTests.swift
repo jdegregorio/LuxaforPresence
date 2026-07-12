@@ -24,7 +24,7 @@ final class PresenceEngineTests: XCTestCase {
             luxafor: lux
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
     }
@@ -48,7 +48,7 @@ final class PresenceEngineTests: XCTestCase {
             luxafor: lux
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId)])
     }
@@ -72,7 +72,7 @@ final class PresenceEngineTests: XCTestCase {
             luxafor: lux
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
     }
@@ -97,7 +97,7 @@ final class PresenceEngineTests: XCTestCase {
             luxafor: lux
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
     }
@@ -123,7 +123,7 @@ final class PresenceEngineTests: XCTestCase {
             luxafor: lux
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
     }
@@ -147,7 +147,7 @@ final class PresenceEngineTests: XCTestCase {
             luxafor: lux
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId)])
     }
@@ -177,7 +177,7 @@ final class PresenceEngineTests: XCTestCase {
         engine.force(.notMeeting)
         mic.nextMic = true
         front.isMeetingApp = true
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId), .off(config.remoteWebhookUserId)])
     }
@@ -207,7 +207,7 @@ final class PresenceEngineTests: XCTestCase {
             now: { fixedNow }
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.yellow(config.remoteWebhookUserId)])
     }
@@ -234,7 +234,7 @@ final class PresenceEngineTests: XCTestCase {
             luxafor: lux
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
     }
@@ -264,7 +264,7 @@ final class PresenceEngineTests: XCTestCase {
             now: { fixedNow }
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
     }
@@ -291,9 +291,65 @@ final class PresenceEngineTests: XCTestCase {
             luxafor: lux
         )
 
-        engine.tick()
+        tickAndWait(engine)
 
         XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+    }
+
+    func testTick_coalescesRequestWhileSignalPollIsInFlight() {
+        var config = PresenceEngine.Config()
+        config.useCalendar = false
+        config.vadEnabled = false
+        let meetingDetector = BlockingMeetingDetector()
+        let engine = PresenceEngine(
+            config: config,
+            micCam: FakeMicCamSignal(),
+            frontApp: FakeFrontmostAppSignal(),
+            calendar: FakeCalendarSignal(),
+            meetingDetector: meetingDetector,
+            luxafor: FakeLuxaforClient()
+        )
+        let firstTickCompleted = expectation(description: "first tick completed")
+        let coalescedTickCompleted = expectation(description: "coalesced tick completed")
+
+        engine.tick { firstTickCompleted.fulfill() }
+        XCTAssertEqual(meetingDetector.waitUntilStarted(), .success)
+        engine.tick { coalescedTickCompleted.fulfill() }
+        meetingDetector.resume()
+
+        wait(for: [firstTickCompleted, coalescedTickCompleted], timeout: 2)
+        XCTAssertEqual(meetingDetector.callCount, 1)
+    }
+
+    func testTick_readsSignalsOffMainAndDeliversStateChangeOnMain() {
+        var config = PresenceEngine.Config()
+        config.useCalendar = false
+        config.vadEnabled = false
+        let meetingDetector = ThreadRecordingMeetingDetector()
+        let engine = PresenceEngine(
+            config: config,
+            micCam: FakeMicCamSignal(),
+            frontApp: FakeFrontmostAppSignal(),
+            calendar: FakeCalendarSignal(),
+            meetingDetector: meetingDetector,
+            luxafor: FakeLuxaforClient()
+        )
+        let stateChanged = expectation(description: "state delivered")
+        engine.onStateChange = { _ in
+            XCTAssertTrue(Thread.isMainThread)
+            stateChanged.fulfill()
+        }
+
+        tickAndWait(engine)
+
+        wait(for: [stateChanged], timeout: 1)
+        XCTAssertFalse(meetingDetector.wasCalledOnMainThread)
+    }
+
+    private func tickAndWait(_ engine: PresenceEngine) {
+        let tickCompleted = expectation(description: "tick completed")
+        engine.tick { tickCompleted.fulfill() }
+        wait(for: [tickCompleted], timeout: 2)
     }
 }
 
@@ -324,6 +380,48 @@ private final class FakeMeetingDetector: MeetingDetectorProtocol {
     var name: String { "Fake" }
     var isActive = false
     func isMeetingActive() -> Bool { isActive }
+}
+
+private final class BlockingMeetingDetector: MeetingDetectorProtocol {
+    var name: String { "Blocking" }
+
+    private let started = DispatchSemaphore(value: 0)
+    private let resumeSignal = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var calls = 0
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    func isMeetingActive() -> Bool {
+        lock.lock()
+        calls += 1
+        lock.unlock()
+        started.signal()
+        _ = resumeSignal.wait(timeout: .now() + 2)
+        return false
+    }
+
+    func waitUntilStarted() -> DispatchTimeoutResult {
+        started.wait(timeout: .now() + 1)
+    }
+
+    func resume() {
+        resumeSignal.signal()
+    }
+}
+
+private final class ThreadRecordingMeetingDetector: MeetingDetectorProtocol {
+    var name: String { "ThreadRecording" }
+    private(set) var wasCalledOnMainThread = true
+
+    func isMeetingActive() -> Bool {
+        wasCalledOnMainThread = Thread.isMainThread
+        return false
+    }
 }
 
 private final class FakeLuxaforClient: LuxaforClientProtocol {

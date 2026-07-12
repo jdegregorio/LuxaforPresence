@@ -28,17 +28,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
 
         engine.onStateChange = { [weak self] state in
-            DispatchQueue.main.async { self?.updateStatusIcon(state) }
+            self?.updateStatusIcon(state)
         }
         engine.prepare()
         promptForAccessibilityIfNeeded()
 
-        timer = Timer.scheduledTimer(withTimeInterval: engine.config.pollInterval, repeats: true) { [weak self] _ in
+        timer?.invalidate()
+        let pollingTimer = Timer(timeInterval: engine.config.pollInterval, repeats: true) { [weak self] _ in
             self?.logger.debug("Timer fired; invoking PresenceEngine.tick()")
             self?.engine.tick()
         }
-        RunLoop.main.add(timer!, forMode: .common)
+        timer = pollingTimer
+        RunLoop.main.add(pollingTimer, forMode: .common)
         self.logger.log("Scheduled PresenceEngine timer at \(self.engine.config.pollInterval, privacy: .public)s intervals")
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        timer?.invalidate()
+        timer = nil
     }
 
     private func updateStatusIcon(_ state: PresenceState) {
