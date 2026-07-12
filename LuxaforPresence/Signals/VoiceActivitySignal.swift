@@ -15,6 +15,16 @@ protocol VoiceActivityAudioEngine: AnyObject {
     func removeTap()
 }
 
+protocol VoiceActivityRetryScheduling {
+    func schedule(after delay: TimeInterval, action: @escaping () -> Void)
+}
+
+struct MainQueueVoiceActivityRetryScheduler: VoiceActivityRetryScheduling {
+    func schedule(after delay: TimeInterval, action: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+    }
+}
+
 final class AVAudioVoiceActivityEngine: VoiceActivityAudioEngine {
     private let engine = AVAudioEngine()
 
@@ -43,12 +53,16 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     private enum LifecycleState {
         case stopped
         case starting
+        case waitingToRetry
         case started
     }
 
     private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "VoiceActivitySignal")
     private let engine: VoiceActivityAudioEngine
+    private let retryScheduler: VoiceActivityRetryScheduling
     private let threshold: Double
+    private let maxStartAttempts: Int
+    private let retryDelay: TimeInterval
     private let stateLock = NSLock()
     private let lifecycleLock = NSLock()
     private var voiceActive = false
@@ -57,10 +71,16 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
 
     init(
         threshold: Double = 0.02,
-        engine: VoiceActivityAudioEngine = AVAudioVoiceActivityEngine()
+        engine: VoiceActivityAudioEngine = AVAudioVoiceActivityEngine(),
+        retryScheduler: VoiceActivityRetryScheduling = MainQueueVoiceActivityRetryScheduler(),
+        maxStartAttempts: Int = 3,
+        retryDelay: TimeInterval = 1
     ) {
         self.threshold = threshold
         self.engine = engine
+        self.retryScheduler = retryScheduler
+        self.maxStartAttempts = max(1, maxStartAttempts)
+        self.retryDelay = max(0, retryDelay)
     }
 
     deinit {
@@ -107,10 +127,15 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     }
 
     func startIfNeeded() {
-        lifecycleLock.lock()
-        defer { lifecycleLock.unlock() }
+        attemptStart(remainingAttempts: maxStartAttempts, from: .stopped)
+    }
 
-        guard lifecycleState == .stopped else { return }
+    private func attemptStart(remainingAttempts: Int, from expectedState: LifecycleState) {
+        lifecycleLock.lock()
+        guard lifecycleState == expectedState else {
+            lifecycleLock.unlock()
+            return
+        }
         lifecycleState = .starting
         engine.installTap { [weak self] buffer in
             self?.process(buffer: buffer)
@@ -119,12 +144,24 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         do {
             try engine.start()
             lifecycleState = .started
+            lifecycleLock.unlock()
             logger.log("Voice activity engine started")
         } catch {
             engine.stop()
             engine.removeTap()
-            lifecycleState = .stopped
+            let shouldRetry = remainingAttempts > 1
+            lifecycleState = shouldRetry ? .waitingToRetry : .stopped
+            lifecycleLock.unlock()
             logger.error("Failed to start VAD engine: \(error.localizedDescription, privacy: .public)")
+
+            if shouldRetry {
+                retryScheduler.schedule(after: retryDelay) { [weak self] in
+                    self?.attemptStart(
+                        remainingAttempts: remainingAttempts - 1,
+                        from: .waitingToRetry
+                    )
+                }
+            }
         }
     }
 

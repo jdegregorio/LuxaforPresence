@@ -5,18 +5,43 @@ import XCTest
 final class VoiceActivitySignalTests: XCTestCase {
     func test_startIfNeeded_afterStartFails_cleansUpAndRetries() {
         let engine = FakeVoiceActivityAudioEngine(failuresBeforeSuccess: 1)
-        let signal = VoiceActivitySignal(engine: engine)
+        let scheduler = FakeVoiceActivityRetryScheduler()
+        let signal = VoiceActivitySignal(
+            engine: engine,
+            retryScheduler: scheduler,
+            retryDelay: 2
+        )
 
         signal.startIfNeeded()
 
         XCTAssertEqual(engine.events, [.installTap, .start, .stop, .removeTap])
+        XCTAssertEqual(scheduler.scheduledDelays, [2])
 
-        signal.startIfNeeded()
+        scheduler.runNext()
 
         XCTAssertEqual(
             engine.events,
             [.installTap, .start, .stop, .removeTap, .installTap, .start]
         )
+        XCTAssertFalse(scheduler.hasPendingActions)
+    }
+
+    func test_startIfNeeded_whenEveryStartFails_stopsAfterMaximumAttempts() {
+        let engine = FakeVoiceActivityAudioEngine(failuresBeforeSuccess: 10)
+        let scheduler = FakeVoiceActivityRetryScheduler()
+        let signal = VoiceActivitySignal(
+            engine: engine,
+            retryScheduler: scheduler,
+            maxStartAttempts: 3
+        )
+
+        signal.startIfNeeded()
+        scheduler.runAll()
+
+        XCTAssertEqual(engine.events.filter { $0 == .start }.count, 3)
+        XCTAssertEqual(engine.events.filter { $0 == .removeTap }.count, 3)
+        XCTAssertEqual(scheduler.scheduledDelays.count, 2)
+        XCTAssertFalse(scheduler.hasPendingActions)
     }
 
     func test_startIfNeeded_afterStartSucceeds_doesNotStartAgain() {
@@ -77,5 +102,30 @@ private final class FakeVoiceActivityAudioEngine: VoiceActivityAudioEngine {
 
     func removeTap() {
         events.append(.removeTap)
+    }
+}
+
+private final class FakeVoiceActivityRetryScheduler: VoiceActivityRetryScheduling {
+    private var pendingActions: [() -> Void] = []
+    private(set) var scheduledDelays: [TimeInterval] = []
+
+    var hasPendingActions: Bool {
+        !pendingActions.isEmpty
+    }
+
+    func schedule(after delay: TimeInterval, action: @escaping () -> Void) {
+        scheduledDelays.append(delay)
+        pendingActions.append(action)
+    }
+
+    func runNext() {
+        guard !pendingActions.isEmpty else { return }
+        pendingActions.removeFirst()()
+    }
+
+    func runAll() {
+        while hasPendingActions {
+            runNext()
+        }
     }
 }
