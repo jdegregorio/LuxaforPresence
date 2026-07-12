@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var timer: Timer?
     private let engine = PresenceEngine()
+    private let configurationFileManager = ConfigurationFileManager()
     private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "AppDelegate")
     private let accessibilityPromptShownKey = "AccessibilityPromptShown"
     private let accessibilityPromptedExecutablePathKey = "AccessibilityPromptedExecutablePath"
@@ -23,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Force OFF", action: #selector(forceOff), keyEquivalent: "f")
         menu.addItem(withTitle: "Auto Detect", action: #selector(forceClear), keyEquivalent: "a")
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "Preferences…", action: #selector(openPrefs), keyEquivalent: ",")
+        menu.addItem(withTitle: "Open Configuration File…", action: #selector(openConfigurationFile), keyEquivalent: ",")
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         statusItem.menu = menu
 
@@ -104,6 +105,19 @@ Open System Settings → Privacy & Security → Accessibility, then enable this 
     @objc private func forceOn()  { engine.force(.inMeeting) }
     @objc private func forceOff() { engine.force(.notMeeting) }
     @objc private func forceClear() { engine.clear(.unknown) }
-    @objc private func openPrefs() { /* simple NSAlert or NSPanel for remoteWebhookUserId etc. */ }
+    @objc private func openConfigurationFile() {
+        do {
+            let configurationURL = try configurationFileManager.createFromTemplateIfNeeded()
+            NSWorkspace.shared.activateFileViewerSelecting([configurationURL])
+            logger.info("Opened the user configuration file in Finder")
+        } catch {
+            logger.error("Unable to prepare the user configuration file: \(error.localizedDescription, privacy: .public)")
+            let alert = NSAlert()
+            alert.messageText = "Unable to Open Configuration"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 }
