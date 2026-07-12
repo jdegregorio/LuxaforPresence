@@ -76,6 +76,38 @@ final class LuxaforClientTests: XCTestCase {
         XCTAssertEqual(finalCount, 2)
     }
 
+    func test_confirmedDuplicateState_isNotSentAgain() {
+        let firstRequestConfirmed = expectation(description: "first request confirmed")
+        let duplicateRequest = expectation(description: "duplicate request sent")
+        duplicateRequest.isInverted = true
+        let lock = NSLock()
+        var requestCount = 0
+        TestURLProtocol.handler = { _, protocolInstance in
+            lock.lock()
+            requestCount += 1
+            let currentCount = requestCount
+            lock.unlock()
+
+            protocolInstance.respond(statusCode: 200)
+            if currentCount == 1 {
+                firstRequestConfirmed.fulfill()
+            } else {
+                duplicateRequest.fulfill()
+            }
+        }
+
+        let client = LuxaforClient(session: makeSession())
+        client.turnOff(userId: "test-user")
+        wait(for: [firstRequestConfirmed], timeout: 2)
+        client.turnOff(userId: "test-user")
+
+        wait(for: [duplicateRequest], timeout: 0.5)
+        lock.lock()
+        let finalCount = requestCount
+        lock.unlock()
+        XCTAssertEqual(finalCount, 1)
+    }
+
     func test_supersededFailure_doesNotRetryStaleState() {
         let redStarted = expectation(description: "red request started")
         let offConfirmed = expectation(description: "off request confirmed")
