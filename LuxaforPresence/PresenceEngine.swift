@@ -312,7 +312,9 @@ final class PresenceEngine {
         }
         let calendarMeetingActive = config.useCalendar ? calendar.hasOngoingMeetingEvent() : false
         let meetingActive = detectorMeetingActive || calendarMeetingActive || debugForcingMeeting
-        let micActive = micCam.isMicrophoneInUse()
+        let micActive = micCam.isMicrophoneInUseByAnotherApplication()
+        let presenceActive = meetingActive || micActive
+        let presenceSource = meetingActive ? "meeting" : "microphone"
         let voiceActive = config.vadEnabled ? voiceActivity.isVoiceActive() : false
         let lastVoiceActivityDate = config.vadEnabled ? voiceActivity.lastVoiceActivityDate : nil
         let now = now()
@@ -321,19 +323,19 @@ final class PresenceEngine {
 
         let newState: PresenceState
         let decisionPath: String
-        if meetingActive {
+        if presenceActive {
             if !config.vadEnabled {
                 newState = .inMeeting
-                decisionPath = "meeting+vadDisabled"
+                decisionPath = "\(presenceSource)+vadDisabled"
             } else if voiceActive {
                 newState = .inMeeting
-                decisionPath = "meeting+voiceActive"
+                decisionPath = "\(presenceSource)+voiceActive"
             } else if withinGrace {
                 newState = .inMeeting
-                decisionPath = "meeting+vadGrace"
+                decisionPath = "\(presenceSource)+vadGrace"
             } else {
                 newState = .inMeetingSilent
-                decisionPath = "meeting+vadSilent"
+                decisionPath = "\(presenceSource)+vadSilent"
             }
         } else {
             newState = .notMeeting

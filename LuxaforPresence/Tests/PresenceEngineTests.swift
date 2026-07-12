@@ -29,7 +29,7 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
     }
 
-    func testTick_staysNotMeeting_whenMeetingDetectorInactive_evenIfMicActive() {
+    func testTick_transitionsToInMeetingSilent_whenExternalMicActiveWithoutVoice() {
         var config = PresenceEngine.Config()
         config.useCalendar = false
         let mic = FakeMicCamSignal()
@@ -50,7 +50,30 @@ final class PresenceEngineTests: XCTestCase {
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId)])
+        XCTAssertEqual(lux.actions, [.yellow(config.remoteWebhookUserId)])
+    }
+
+    func testTick_transitionsToInMeeting_whenExternalMicAndVoiceAreActive() {
+        var config = PresenceEngine.Config()
+        config.useCalendar = false
+        let mic = FakeMicCamSignal()
+        mic.nextMic = true
+        let voiceActivity = FakeVoiceActivitySignal()
+        voiceActivity.active = true
+        let lux = FakeLuxaforClient()
+        let engine = PresenceEngine(
+            config: config,
+            micCam: mic,
+            frontApp: FakeFrontmostAppSignal(),
+            calendar: FakeCalendarSignal(),
+            meetingDetector: FakeMeetingDetector(),
+            voiceActivity: voiceActivity,
+            luxafor: lux
+        )
+
+        tickAndWait(engine)
+
+        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
     }
 
     func testTick_transitionsToInMeeting_whenCameraActive_evenIfMeetingDetectorInactive() {
@@ -359,7 +382,7 @@ private final class FakeMicCamSignal: MicCamSignalProtocol {
     var nextMic = false
     var nextCamera = false
     func requestAccessIfNeeded() {}
-    func isMicrophoneInUse() -> Bool { nextMic }
+    func isMicrophoneInUseByAnotherApplication() -> Bool { nextMic }
     func isCameraInUse() -> Bool { nextCamera }
     func anyInUse() -> Bool { nextMic || nextCamera }
 }
