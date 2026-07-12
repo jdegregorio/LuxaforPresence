@@ -185,11 +185,33 @@ final class LuxaforClientTests: XCTestCase {
     }
 
     private static func jsonBody(from request: URLRequest) -> [String: Any]? {
-        guard let body = request.httpBody,
+        guard let body = bodyData(from: request),
               let object = try? JSONSerialization.jsonObject(with: body) else {
             return nil
         }
         return object as? [String: Any]
+    }
+
+    private static func bodyData(from request: URLRequest) -> Data? {
+        if let body = request.httpBody {
+            return body
+        }
+        guard let stream = request.httpBodyStream else { return nil }
+
+        stream.open()
+        defer { stream.close() }
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 1_024)
+        while true {
+            let bytesRead = stream.read(&buffer, maxLength: buffer.count)
+            if bytesRead < 0 {
+                return nil
+            }
+            if bytesRead == 0 {
+                return body
+            }
+            body.append(buffer, count: bytesRead)
+        }
     }
 
     private static func actionFields(from request: URLRequest) -> [String: Any]? {
