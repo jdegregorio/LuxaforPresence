@@ -66,17 +66,23 @@ printf "APPL????" > "${CONTENTS_DIR}/PkgInfo"
 cp "${BUILD_DIR}/${PRODUCT_NAME}" "${MACOS_DIR}/${PRODUCT_NAME}"
 chmod +x "${MACOS_DIR}/${PRODUCT_NAME}"
 
-RESOURCE_BUNDLE_PATH="$(find "${BUILD_DIR}" -maxdepth 1 -type d -name "${PRODUCT_NAME}_*.bundle" -print -quit)"
-if [[ -n "${RESOURCE_BUNDLE_PATH}" ]]; then
-    cp -R "${RESOURCE_BUNDLE_PATH}" "${RESOURCES_DIR}/"
+RESOURCE_BUNDLE_PATH="${BUILD_DIR}/${PRODUCT_NAME}_${PRODUCT_NAME}.bundle"
+if [[ -d "${RESOURCE_BUNDLE_PATH}" ]]; then
+    # SwiftPM's generated Bundle.module accessor looks beside Bundle.main's
+    # bundle URL. For an app bundle, that is the .app root rather than
+    # Contents/Resources.
+    cp -R "${RESOURCE_BUNDLE_PATH}" "${APP_DIR}/"
 else
-    echo "warning: SwiftPM resource bundle not found; UI assets may be missing." >&2
+    echo "error: SwiftPM resource bundle not found; cannot package a runnable app." >&2
+    exit 1
 fi
 
 CONFIG_SAMPLE="${REPO_ROOT}/LuxaforPresence/Resources/config.plist"
 if [[ -f "${CONFIG_SAMPLE}" ]]; then
     cp "${CONFIG_SAMPLE}" "${RESOURCES_DIR}/config.sample.plist"
 fi
+
+"${REPO_ROOT}/scripts/verify-app-resources.sh" "${APP_DIR}"
 
 echo "Creating dmg at ${DMG_PATH}…"
 rm -rf "${DMG_STAGING}" "${DMG_PATH}"
