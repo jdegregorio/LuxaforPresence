@@ -186,7 +186,7 @@ final class LuxaforClientTests: XCTestCase {
     func test_localClient_sendsTokenAndColorToLocalEndpoint() throws {
         let requestReceived = expectation(description: "local request received")
         TestURLProtocol.handler = { request, protocolInstance in
-            XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:5383/color")
+            XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:5383/luxafor/v1/color")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
             let payload = try XCTUnwrap(Self.jsonBody(from: request))
             XCTAssertEqual(payload["color"] as? String, "#FF7000")
@@ -194,8 +194,8 @@ final class LuxaforClientTests: XCTestCase {
             requestReceived.fulfill()
         }
 
-        let client = LuxaforLocalWebhookClient(
-            baseURL: "http://127.0.0.1:5383",
+        let client = try LuxaforLocalWebhookClient(
+            baseURL: "http://127.0.0.1:5383/luxafor/v1",
             token: "test-token",
             session: makeSession()
         )

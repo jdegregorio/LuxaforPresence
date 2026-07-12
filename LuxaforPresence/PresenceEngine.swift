@@ -3,46 +3,37 @@ import OSLog
 
 final class PresenceEngine {
     struct Config {
-        var transportMode: TransportMode
-        var localWebhookBaseUrl: String
-        var localWebhookToken: String
-        var remoteWebhookUserId: String
-        var pollInterval: TimeInterval
-        var meetingBundles: Set<String>
-        var useCalendar: Bool
-        var debugAssumeFrontmostImpliesMic: Bool
+        static let defaultPollInterval: TimeInterval = 2.0
+        static let minimumPollInterval: TimeInterval = 0.25
+        static let defaultVadThreshold = 0.02
+        static let defaultVadGraceSeconds: TimeInterval = 10
+
+        var transportMode: TransportMode = .local
+        var localWebhookBaseUrl = LocalWebhookEndpoint.defaultBaseURLString
+        var localWebhookToken = "luxafor"
+        var remoteWebhookUserId = "YOUR_USER_ID_HERE"
+        var pollInterval = defaultPollInterval
+        var meetingBundles: Set<String> = [
+            "us.zoom.xos",
+            "com.microsoft.teams2",
+            "com.microsoft.teams",
+            "com.cisco.webex.meetingapp",
+            "com.slack.slack",
+            "com.google.Chrome",
+            "com.apple.Safari",
+        ]
+        var useCalendar = false
+        var debugAssumeFrontmostImpliesMic = false
         var enabledMeetingDetectors: Set<String>?
-        var vadEnabled: Bool
-        var vadThreshold: Double
-        var vadGraceSeconds: TimeInterval
+        var vadEnabled = true
+        var vadThreshold = defaultVadThreshold
+        var vadGraceSeconds = defaultVadGraceSeconds
         private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "Config")
 
         init(
             userConfigURLs: [URL]? = nil,
             bundledConfigBundle: Bundle = .module,
         ) {
-            // Default values
-            transportMode = .local
-            localWebhookBaseUrl = "http://127.0.0.1:5383"
-            localWebhookToken = "luxafor"
-            remoteWebhookUserId = "YOUR_USER_ID_HERE" // Fallback default
-            pollInterval = 2.0
-            meetingBundles = [
-                "us.zoom.xos",
-                "com.microsoft.teams2",
-                "com.microsoft.teams",
-                "com.cisco.webex.meetingapp",
-                "com.slack.slack",
-                "com.google.Chrome",
-                "com.apple.Safari"
-            ]
-            useCalendar = false
-            debugAssumeFrontmostImpliesMic = false
-            enabledMeetingDetectors = nil
-            vadEnabled = true
-            vadThreshold = 0.02
-            vadGraceSeconds = 10
-
             // Try to load from user's config directory first
             let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("LuxaforPresence/config.plist")
             let dotConfigURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/LuxaforPresence/config.plist")
@@ -51,99 +42,123 @@ final class PresenceEngine {
             if let userConfigURL = candidateURLs.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
                let userConfig = NSDictionary(contentsOf: userConfigURL) as? [String: Any] {
                 logger.log("Loaded config from user path at \(userConfigURL.path(percentEncoded: false), privacy: .public)")
-                if let mode = userConfig["transportMode"] as? String,
-                   let parsed = TransportMode(rawValue: mode.lowercased()) {
-                    transportMode = parsed
-                }
-                if let baseUrl = userConfig["localWebhookBaseUrl"] as? String {
-                    localWebhookBaseUrl = baseUrl
-                }
-                if let token = userConfig["localWebhookToken"] as? String {
-                    localWebhookToken = token
-                }
-                if let id = userConfig["remoteWebhookUserId"] as? String {
-                    remoteWebhookUserId = id
-                } else if let legacyId = userConfig["userId"] as? String {
-                    remoteWebhookUserId = legacyId
-                }
-                if let interval = userConfig["pollInterval"] as? TimeInterval {
-                    pollInterval = interval
-                }
-                if let bundles = userConfig["meetingBundles"] as? [String] {
-                    meetingBundles = Set(bundles)
-                }
-                if let useCal = userConfig["useCalendar"] as? Bool {
-                    useCalendar = useCal
-                }
-                if let debugFlag = userConfig["debugAssumeFrontmostImpliesMic"] as? Bool {
-                    debugAssumeFrontmostImpliesMic = debugFlag
-                }
-                if let detectors = userConfig["enabledMeetingDetectors"] as? [String] {
-                    enabledMeetingDetectors = Set(detectors)
-                }
-                if let vadFlag = userConfig["vadEnabled"] as? Bool {
-                    vadEnabled = vadFlag
-                }
-                if let threshold = userConfig["vadThreshold"] as? Double {
-                    vadThreshold = threshold
-                } else if let threshold = userConfig["vadThreshold"] as? NSNumber {
-                    vadThreshold = threshold.doubleValue
-                }
-                if let grace = userConfig["vadGraceSeconds"] as? TimeInterval {
-                    vadGraceSeconds = grace
-                } else if let grace = userConfig["vadGraceSeconds"] as? NSNumber {
-                    vadGraceSeconds = grace.doubleValue
-                }
+                apply(userConfig)
             } else if let bundledConfigURL = bundledConfigBundle.url(forResource: "config", withExtension: "plist"),
                       let bundledConfig = NSDictionary(contentsOf: bundledConfigURL) as? [String: Any] {
                 logger.log("Loaded config from bundled resource at \(bundledConfigURL.path, privacy: .public)")
-                // Fallback to bundled config
-                if let mode = bundledConfig["transportMode"] as? String,
-                   let parsed = TransportMode(rawValue: mode.lowercased()) {
-                    transportMode = parsed
-                }
-                if let baseUrl = bundledConfig["localWebhookBaseUrl"] as? String {
-                    localWebhookBaseUrl = baseUrl
-                }
-                if let token = bundledConfig["localWebhookToken"] as? String {
-                    localWebhookToken = token
-                }
-                if let id = bundledConfig["remoteWebhookUserId"] as? String {
-                    remoteWebhookUserId = id
-                } else if let legacyId = bundledConfig["userId"] as? String {
-                    remoteWebhookUserId = legacyId
-                }
-                if let interval = bundledConfig["pollInterval"] as? TimeInterval {
-                    pollInterval = interval
-                }
-                if let bundles = bundledConfig["meetingBundles"] as? [String] {
-                    meetingBundles = Set(bundles)
-                }
-                if let useCal = bundledConfig["useCalendar"] as? Bool {
-                    useCalendar = useCal
-                }
-                if let debugFlag = bundledConfig["debugAssumeFrontmostImpliesMic"] as? Bool {
-                    debugAssumeFrontmostImpliesMic = debugFlag
-                }
-                if let detectors = bundledConfig["enabledMeetingDetectors"] as? [String] {
-                    enabledMeetingDetectors = Set(detectors)
-                }
-                if let vadFlag = bundledConfig["vadEnabled"] as? Bool {
-                    vadEnabled = vadFlag
-                }
-                if let threshold = bundledConfig["vadThreshold"] as? Double {
-                    vadThreshold = threshold
-                } else if let threshold = bundledConfig["vadThreshold"] as? NSNumber {
-                    vadThreshold = threshold.doubleValue
-                }
-                if let grace = bundledConfig["vadGraceSeconds"] as? TimeInterval {
-                    vadGraceSeconds = grace
-                } else if let grace = bundledConfig["vadGraceSeconds"] as? NSNumber {
-                    vadGraceSeconds = grace.doubleValue
-                }
+                apply(bundledConfig)
             } else {
                 logger.error("No config file found; using default hard-coded values")
             }
+            validateSelectedTransport()
+            logSummary()
+        }
+
+        init(values: [String: Any]) {
+            apply(values)
+            validateSelectedTransport()
+            logSummary()
+        }
+
+        private mutating func apply(_ values: [String: Any]) {
+            if let value = values["transportMode"] {
+                if let mode = value as? String,
+                   let parsed = TransportMode(
+                       rawValue: mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                   ) {
+                    transportMode = parsed
+                } else {
+                    logger.error("Invalid transportMode; expected 'local' or 'remote'. Using local transport.")
+                }
+            }
+            if let value = values["localWebhookBaseUrl"] {
+                if let rawURL = value as? String {
+                    do {
+                        localWebhookBaseUrl = try LocalWebhookEndpoint(validating: rawURL).baseURL.absoluteString
+                    } catch {
+                        logger.error("Invalid localWebhookBaseUrl: \(error.localizedDescription, privacy: .public). Using the loopback default.")
+                    }
+                } else {
+                    logger.error("Invalid localWebhookBaseUrl; expected a string. Using the loopback default.")
+                }
+            }
+            if let token = values["localWebhookToken"] as? String {
+                localWebhookToken = token
+            }
+            if let id = values["remoteWebhookUserId"] as? String {
+                remoteWebhookUserId = id.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if let legacyId = values["userId"] as? String {
+                remoteWebhookUserId = legacyId.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let value = values["pollInterval"] {
+                if let interval = Self.number(from: value),
+                   interval.isFinite,
+                   interval >= Self.minimumPollInterval {
+                    pollInterval = interval
+                } else {
+                    logger.error("Invalid pollInterval; expected a finite value of at least \(Self.minimumPollInterval, privacy: .public) seconds. Using \(Self.defaultPollInterval, privacy: .public) seconds.")
+                }
+            }
+            if let bundles = values["meetingBundles"] as? [String] {
+                meetingBundles = Set(bundles)
+            }
+            if let useCal = values["useCalendar"] as? Bool {
+                useCalendar = useCal
+            }
+            if let debugFlag = values["debugAssumeFrontmostImpliesMic"] as? Bool {
+                debugAssumeFrontmostImpliesMic = debugFlag
+            }
+            if let detectors = values["enabledMeetingDetectors"] as? [String] {
+                enabledMeetingDetectors = Set(detectors)
+            }
+            if let vadFlag = values["vadEnabled"] as? Bool {
+                vadEnabled = vadFlag
+            }
+            if let value = values["vadThreshold"] {
+                if let threshold = Self.number(from: value),
+                   threshold.isFinite,
+                   threshold > 0,
+                   threshold <= 1 {
+                    vadThreshold = threshold
+                } else {
+                    logger.error("Invalid vadThreshold; expected a finite value greater than 0 and at most 1. Using \(Self.defaultVadThreshold, privacy: .public).")
+                }
+            }
+            if let value = values["vadGraceSeconds"] {
+                if let grace = Self.number(from: value), grace.isFinite, grace >= 0 {
+                    vadGraceSeconds = grace
+                } else {
+                    logger.error("Invalid vadGraceSeconds; expected a finite non-negative value. Using \(Self.defaultVadGraceSeconds, privacy: .public) seconds.")
+                }
+            }
+        }
+
+        private mutating func validateSelectedTransport() {
+            guard transportMode == .remote,
+                  !Self.isValidRemoteWebhookUserId(remoteWebhookUserId) else {
+                return
+            }
+            logger.error("Remote transport requires a non-empty remoteWebhookUserId that is not a sample placeholder. Using local transport.")
+            transportMode = .local
+        }
+
+        private static func isValidRemoteWebhookUserId(_ value: String) -> Bool {
+            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            guard !normalized.isEmpty else { return false }
+            return normalized != "YOUR_USER_ID_HERE"
+                && normalized != "LUXAFOR_USER_ID_HERE"
+                && normalized != "REPLACE_ME"
+        }
+
+        private static func number(from value: Any) -> Double? {
+            guard let number = value as? NSNumber,
+                  CFGetTypeID(number) != CFBooleanGetTypeID() else {
+                return nil
+            }
+            return number.doubleValue
+        }
+
+        private func logSummary() {
             let finalizedTransportMode = transportMode
             let finalizedPollInterval = pollInterval
             let finalizedBundleCount = meetingBundles.count
@@ -160,7 +175,15 @@ final class PresenceEngine {
         func makeLuxaforClient() -> LuxaforClientProtocol {
             switch transportMode {
             case .local:
-                return LuxaforLocalWebhookClient(baseURL: localWebhookBaseUrl, token: localWebhookToken)
+                do {
+                    return try LuxaforLocalWebhookClient(baseURL: localWebhookBaseUrl, token: localWebhookToken)
+                } catch {
+                    logger.fault("Local webhook configuration became invalid after initialization: \(error.localizedDescription, privacy: .public). Using the loopback default.")
+                    return LuxaforLocalWebhookClient(
+                        endpoint: .default,
+                        token: localWebhookToken
+                    )
+                }
             case .remote:
                 return LuxaforClient()
             }
