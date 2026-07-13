@@ -31,6 +31,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onStateChange = { [weak self] state in
             self?.updateStatusIcon(state)
         }
+        let workspaceNotifications = NSWorkspace.shared.notificationCenter
+        workspaceNotifications.addObserver(
+            self,
+            selector: #selector(workspaceWillSleep),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        workspaceNotifications.addObserver(
+            self,
+            selector: #selector(workspaceDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
         engine.prepare()
         engine.tick()
         promptForAccessibilityIfNeeded()
@@ -48,6 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
         timer = nil
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        engine.shutdownOutput()
     }
 
     private func updateStatusIcon(_ state: PresenceState) {
@@ -133,6 +148,15 @@ Open System Settings → Privacy & Security → Accessibility, then enable this 
             alert.alertStyle = .warning
             alert.runModal()
         }
+    }
+    @objc private func workspaceWillSleep(_ notification: Notification) {
+        logger.debug("Workspace will sleep; suspending light output")
+        engine.suspendOutput()
+    }
+
+    @objc private func workspaceDidWake(_ notification: Notification) {
+        logger.debug("Workspace did wake; reevaluating and reasserting light output")
+        engine.resumeOutput()
     }
     @objc private func quit() { NSApp.terminate(nil) }
 }
