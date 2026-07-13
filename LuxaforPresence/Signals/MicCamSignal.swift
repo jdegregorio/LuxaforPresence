@@ -12,7 +12,7 @@ final class MicCamSignal: MicCamSignalProtocol {
         requestAccess(for: .video)
     }
 
-    func isMicrophoneInUse() -> Bool {
+    func isMicrophoneInUseByAnotherApplication() -> Bool {
         let audioDevices = captureDevices(for: .audio)
         let coreAudio = coreAudioSnapshot()
 
@@ -31,9 +31,12 @@ final class MicCamSignal: MicCamSignalProtocol {
             )
         }
 
-        let audioInUse = audioDevices.contains { $0.isInUseByAnotherApplication }
+        let audioInUseByAnotherApplication = audioDevices.contains { $0.isInUseByAnotherApplication }
         let halRunning = coreAudio.statuses.contains { $0.hasInput && $0.isRunning }
-        return audioInUse || halRunning
+        logger.debug(
+            "External microphone use? \(audioInUseByAnotherApplication); HAL running? \(halRunning) (HAL includes this app's VAD capture and is diagnostic only)"
+        )
+        return audioInUseByAnotherApplication
     }
 
     func isCameraInUse() -> Bool {
@@ -53,7 +56,7 @@ final class MicCamSignal: MicCamSignalProtocol {
     }
 
     func anyInUse() -> Bool {
-        isMicrophoneInUse() || isCameraInUse()
+        isMicrophoneInUseByAnotherApplication() || isCameraInUse()
     }
 
     private func coreAudioSnapshot() -> CoreAudioSnapshot {

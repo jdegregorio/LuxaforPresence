@@ -18,8 +18,8 @@ Calendar-based detection misses ad hoc calls and huddles, and there may be calen
 
 This app works as an add-on to the existing Luxafor app, and both apps need to be installed.
 
-The app runs in the background and tries to detect whether the camera is on, or whether there is active meeting UI in apps like Slack Huddle or Teams via the Accessibility framework.
-If a meeting is active, voice activity decides between `inMeeting` (red) and `inMeetingSilent` (yellow).
+The app runs in the background and tries to detect whether the camera or microphone is used by another application, or whether there is active meeting UI in apps like Slack Huddle or Teams via the Accessibility framework.
+If microphone use or meeting UI is active, voice activity decides between `inMeeting` (red) and `inMeetingSilent` (yellow). This also covers recording and dictation tools that do not expose meeting UI.
 
 When meeting state changes, the app calls the Luxafor webhook API to change the LED light.
 By default it uses the local Luxafor webhook (`http://127.0.0.1:5383`) and can be switched to the remote Luxafor webhook via config.
@@ -37,7 +37,7 @@ Beta. Should work for Slack and Teams on recent versions of macOS.
 
 | Info         | Status   | Notes                                             | Method              |
 | -------------| ---------|---------------------------------------------------|---------------------|
-| Mic           |  🟢     | Detected, not used in the meeting detection logic | macOS Native        |
+| Mic           |  🟢     | External microphone use sets presence; VAD selects red/yellow | macOS Native        |
 | Camera        |  🟢     | Detected, camera usage sets "on a call"           | macOS Native        |
 | Slack Huddle  |  🟢     | Detected, Slack Huddle turns "on a call", "muted" | macOS Accessibility |
 | Slack Call    |         | Roadmap                                            | macOS Accessibility |
