@@ -1,10 +1,7 @@
 import Foundation
 
 protocol MicCamSignalProtocol {
-    func requestAccessIfNeeded()
     func isMicrophoneInUseByAnotherApplication() -> Bool
-    func isCameraInUse() -> Bool
-    func anyInUse() -> Bool
 }
 
 protocol FrontmostAppSignalProtocol {

@@ -27,6 +27,7 @@ DMG_STAGING="${DIST_DIR}/dmg-src"
 rm -rf "${DMG_STAGING}" "${DMG_PATH}"
 mkdir -p "${DMG_STAGING}"
 cp -R "${APP_DIR}" "${DMG_STAGING}/"
+ln -s /Applications "${DMG_STAGING}/Applications"
 
 hdiutil create \
     -volname "${VOLUME_NAME}" \

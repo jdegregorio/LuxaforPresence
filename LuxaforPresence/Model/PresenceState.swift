@@ -12,7 +12,7 @@ enum PresenceState: String {
         case .zoomQuiet:
             return "Zoom Quiet (Yellow)"
         case .voiceRecent:
-            return "Voice Recent (Red)"
+            return "Voice Recent (Flashing Red)"
         case .voiceCooldown:
             return "Voice Cooldown (Red)"
         case .unknown:

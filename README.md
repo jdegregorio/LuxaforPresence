@@ -1,134 +1,112 @@
 # LuxaforPresence for macOS
 
-Native macOS menu bar app that updates a [Luxafor flag](https://luxafor.com/product/flag/) if you are actually in a meeting.
+LuxaforPresence is a local macOS menu-bar app that turns a Luxafor Flag into a simple family office presence light.
 
-## Why
-
-To show your family members that you are on a call at the moment.
-
-The Luxafor Presence light comes with an app that integrates with Teams, Google Calendar, Zoom, and a few other tools. However, only one integration can be active at a time, and Teams integration can require approval from a corporate IT team, which makes this a non-starter for many people.
-
-It is normal to use multiple call apps, for example Slack huddles for pairing, Teams for scheduled meetings, Zoom with external customers, and Google Meet for Google Cloud Support calls.
-
-It is non-trivial to detect "on a call." Tracking camera use helps, but many calls do not use a camera.
-Mic-only detection does not work well when apps like MOTIVMix or OBS Studio keep the mic in use.
-Calendar-based detection misses ad hoc calls and huddles, and there may be calendar meetings you will not attend.
-
-## How it works
-
-This app works as an add-on to the existing Luxafor app, and both apps need to be installed.
-
-The app runs in the background and tries to detect whether the camera or microphone is used by another application, or whether there is active meeting UI in apps like Slack Huddle or Teams via the Accessibility framework.
-If microphone use or meeting UI is active, voice activity decides between `inMeeting` (red) and `inMeetingSilent` (yellow). This also covers recording and dictation tools that do not expose meeting UI.
-
-When meeting state changes, the app calls the Luxafor webhook API to change the LED light.
-By default it uses the local Luxafor webhook (`http://127.0.0.1:5383`) and can be switched to the remote Luxafor webhook via config.
-Sometimes the local webhook can be less reliable than the remote webhook API.
-
-## Screenshots
-
-| Light ON (Red) | Light OFF |
+| Light | Meaning |
 | --- | --- |
-| ![LuxaforPresence menu when On](docs/images/on.png) | ![LuxaforPresence menu when Off)](docs/images/off.png) |
+| Off | No active Zoom meeting or qualifying voice activity in an active microphone context |
+| Solid yellow | Zoom is active, but no qualifying voice signal occurred in the last ten minutes |
+| Flashing red | Qualifying microphone energy occurred in the last five minutes |
+| Solid red | The last qualifying signal was five to ten minutes ago |
 
-## Project Status
+The red timeline continues while either Zoom or external microphone use keeps the communication context active. When both end, the light turns off immediately. A new qualifying signal restarts the five-minute flashing period.
 
-Beta. Should work for Slack and Teams on recent versions of macOS.
+## Privacy and permissions
 
-| Info         | Status   | Notes                                             | Method              |
-| -------------| ---------|---------------------------------------------------|---------------------|
-| Mic           |  🟢     | External microphone use sets presence; VAD selects red/yellow | macOS Native        |
-| Camera        |  🟢     | Detected, camera usage sets "on a call"           | macOS Native        |
-| Slack Huddle  |  🟢     | Detected, Slack Huddle turns "on a call", "muted" | macOS Accessibility |
-| Slack Call    |         | Roadmap                                            | macOS Accessibility |
-| Teams Meeting |  🟢     | Detected, Teams Meeting turns "on a call", "muted" | macOS Accessibility |
-| Teams Call    |  🟡     | Implemented, needs more testing                    | macOS Accessibility |
-| Voice Activity|  🟢     | Voice activity transitions "on a call", "muted" -> "on a call" | macOS Native, VAD |
-| Calendar      |  🟡     | Implemented, limited testing                        | macOS Calendar   |
-| Manual        |  🟢     | Manually set "on a call" ON or OFF                  | Menu Bar UI      |
-| Screen Sharing|         | Roadmap                                             | macOS Native ?   |
-| Zoom          |  🟡     | Implemented (process-based), needs more testing     | Process check     |
-| Webex         |  🟡     | Implemented (process-based), needs more testing     | Process check     |
-| Google Meet   |  🟡     | Implemented (browser tab + audio), needs more testing | AppleScript + browser |
-| FaceTime      |         | Roadmap                                             |                  |
+The packaged app requests only **Microphone** permission. `AVAudioEngine` calculates RMS energy from short in-memory buffers. It never records, stores, transmits, or transcribes audio, and it never logs individual audio samples.
 
-## Prerequisites
+Zoom detection is process-based (`CptHost`) and does not require Accessibility, Calendar, Camera, browser automation, or Apple Events permissions.
 
-* macOS 13.0 or newer on Apple Silicon. The published build is currently arm64-only.
-* Xcode 14.3+ or Xcode Command Line Tools with Swift 5.7 (`xcode-select --install`).
-* A [Luxafor flag](https://luxafor.com/product/flag/) with [Luxafor software](https://www.luxaformanual.com/) installed.
-* If using the remote Luxafor webhook, register Luxafor `userId`.
+Use the packaged and signed app for final permission testing. `swift run` is an unpackaged development process, so macOS may attribute its microphone permission to the parent terminal.
 
+## Install and launch at login
 
-## Setup
+1. Open the DMG and drag **LuxaforPresence.app** onto the **Applications** shortcut.
+2. Launch the installed copy from `/Applications` or `~/Applications`.
+3. Approve Microphone access.
 
-1.  [Download](https://github.com/jdegregorio/LuxaforPresence/releases) and install the app.
+The installed app registers itself with `SMAppService.mainApp` on first launch. Use **Launch at Login** in the menu to opt out or re-enable it. If macOS requires approval, the menu opens System Settings → General → Login Items. Registration is intentionally unavailable from a mounted DMG, App Translocation, or `swift run`.
 
-2.  **Configure Luxafor transport:**
-    *   Choose **Open Configuration File…** from the menu-bar app. LuxaforPresence creates `~/.config/LuxaforPresence/config.plist` from the bundled template when needed and reveals it in Finder.
-    *   After saving configuration changes, quit and reopen LuxaforPresence to apply them.
-    ```xml
-    <dict>
-        <key>transportMode</key>
-        <string>local</string>
-        <key>localWebhookBaseUrl</key>
-        <string>http://127.0.0.1:5383</string>
-        <key>localWebhookToken</key>
-        <string>luxafor</string>
-        <key>remoteWebhookUserId</key>
-        <string>LUXAFOR_USER_ID_HERE</string>
-    </dict>
-    ```
-    *   To use the remote webhook, set `transportMode` to `remote` and provide `remoteWebhookUserId`.
-    *   `localWebhookBaseUrl` must be an absolute HTTP(S) URL without embedded credentials, a query, or a fragment. Cleartext HTTP is accepted only for loopback hosts such as `127.0.0.1` and `localhost`; use HTTPS for every other host. A configured base path is preserved when the `/color` endpoint is added.
-    *   Runtime numeric values are validated before use: `pollInterval` must be at least `0.25` seconds, `vadThreshold` must be greater than `0` and at most `1`, and `vadGraceSeconds` must be non-negative. Invalid values are logged and replaced with safe defaults. Remote mode with a blank or sample `remoteWebhookUserId` falls back to local transport.
+## Luxafor transport
 
-## Permissions
+Both LuxaforPresence and the Luxafor macOS desktop app 2.5.32 or later must be running. In the Luxafor app, enable **Incoming Local Webhooks** and make its port and security token match `localWebhookBaseUrl` and `localWebhookToken`. Local webhook transport is the default:
 
-LuxaforPresence relies on macOS privacy permissions to be able to detect "on a call" state:
+```text
+http://127.0.0.1:5383/color
+```
 
-- **Microphone:** required for voice activity detection. The app does not record audio; it analyzes small input buffers to detect speech patterns.
-- **Camera:** required to detect when the camera is in use and enumerate available camera devices. No video recording.
-- **Accessibility:** required to detect active Teams meetings or Slack huddles.
-- **Automation (Apple Events):** required for Google Meet checks in Chrome/Safari.
-- **Calendar (optional):** required only when `useCalendar` is true.
+Failed requests use latest-wins retry behavior. A five-second listener probe reasserts output after an observed desktop-service recovery. Because the documented local API exposes no device-health endpoint, local transport also forces the current physical phase every 30 seconds by default; semantic state/output changes remain deduplicated. The liveness monitor, heartbeat, flashing timer, VAD, and polling pause during sleep.
 
+Remote webhook transport remains available as a fallback and requires a non-placeholder `remoteWebhookUserId`.
 
-# Development
+## Menu diagnostics and controls
 
-## How to Build and Run
+The menu shows the current state and Luxafor output, Zoom and external microphone status, current above-threshold energy, last qualifying voice time, and remaining flashing/cooldown time.
 
-All commands are executed from the repository root and require the Xcode toolchain.
+Manual choices take precedence over automatic detection:
 
-- `swift build` produces a debug build in `.build/debug/LuxaforPresence`.
-- `swift run` produces a debug build and launches the menu bar app. The app started this way will be identified as its parent Terminal app (iTerm2, Ghostty, etc.).
-- `swift run -c release` produces an optimized build.
-- `swift test --enable-code-coverage` produces a debug build, runs test suite `LuxaforPresence/Tests` and creates coverage data in `.build/debug/codecov`
-- `xcrun llvm-cov report .build/debug/LuxaforPresencePackageTests.xctest/Contents/MacOS/LuxaforPresencePackageTests     -instr-profile=.build/debug/codecov/default.profdata     -ignore-filename-regex=".build/|Tests/"     -use-color` test coverage report
+- Automatic
+- Available / Off
+- Zoom Quiet / Yellow
+- Voice Recent / Flashing Red
+- Voice Cooldown / Solid Red
+- Reset Voice Timer
 
-## Packaging
+## Configuration
+
+Choose **Open Configuration File…** to create and reveal `~/.config/LuxaforPresence/config.plist`. Restart the app after editing.
+
+```xml
+<dict>
+    <key>transportMode</key>
+    <string>local</string>
+    <key>localWebhookBaseUrl</key>
+    <string>http://127.0.0.1:5383</string>
+    <key>localWebhookToken</key>
+    <string>luxafor</string>
+    <key>remoteWebhookUserId</key>
+    <string>YOUR_USER_ID_HERE</string>
+    <key>pollInterval</key>
+    <real>2</real>
+    <key>detectZoom</key>
+    <true/>
+    <key>vadEnabled</key>
+    <true/>
+    <key>vadThreshold</key>
+    <real>0.02</real>
+    <key>vadMinimumActiveMilliseconds</key>
+    <integer>250</integer>
+    <key>recentVoiceBlinkSeconds</key>
+    <real>300</real>
+    <key>voiceCooldownSeconds</key>
+    <real>300</real>
+    <key>blinkIntervalMilliseconds</key>
+    <integer>750</integer>
+    <key>localOutputReassertSeconds</key>
+    <integer>30</integer>
+</dict>
+```
+
+Numeric values are validated at startup. `pollInterval` must be at least 0.25 seconds, `vadThreshold` must be greater than 0 and at most 1, `vadMinimumActiveMilliseconds` must be at least 250, voice durations must be non-negative, `blinkIntervalMilliseconds` must be at least 100, and `localOutputReassertSeconds` must be at least 5.
+
+## Development
+
+Requires macOS 13+, Swift 5.7+, and Xcode 14.3+ or matching Command Line Tools.
 
 ```bash
+CLANG_MODULE_CACHE_PATH=$PWD/.cache swift build --disable-sandbox
+swift test
 ./scripts/package-dmg.sh
 ```
 
-The script defaults to the `release` configuration and creates `dist/LuxaforPresence.dmg` containing `LuxaforPresence.app`. 
-It needs the standard macOS tools (`swift`, `hdiutil`, `plutil`) available in `$PATH`.
+The packaging script builds a release app and emits `dist/LuxaforPresence.dmg`. For a trusted distribution, follow [DIST.md](DIST.md) to Developer ID-sign, notarize, staple, and verify the app and DMG.
 
-## Troubleshooting & Debugging
+Structured logs contain only derived state, timestamps, booleans, decision paths, output modes, and optional numerical RMS values. They never contain calendar titles, meeting URLs, speech, or raw audio.
 
-1. Check log stream
 ```bash
-# run as admin, set 'category' to specific areas, like SlackMeetingDetector or PresenceEngine
-log stream --level debug --predicate 'subsystem == "com.example.LuxaforPresence" && (category == "PresenceEngine" || category == "VoiceActivitySignal")'
+log stream --level debug --predicate 'subsystem == "com.jdegregorio.LuxaforPresence"'
 ```
-2. Confirm Accessibility access is granted to LuxaforPresence (or Terminal/Xcode when running from `swift run`). The app prompts on first launch.
-   Remove LuxaforPresence from Accessibility and add it back.
-
-## Dependencies
-
-This project has no external package dependencies. The Swift Package Manager will handle the project setup.
 
 ## License
 
-LuxaforPresence is available under the [Apache License 2.0](LICENSE.txt), which permits commercial use as long as copyright and attribution notices are preserved.
+LuxaforPresence is available under the [Apache License 2.0](LICENSE.txt).

@@ -14,7 +14,7 @@ final class LightOutputController {
     private let userId: String
     private let timer: LightOutputTimerProtocol
     private let logger = Logger(
-        subsystem: "com.example.LuxaforPresence",
+        subsystem: "com.jdegregorio.LuxaforPresence",
         category: "LightOutputController"
     )
 
@@ -46,7 +46,9 @@ final class LightOutputController {
         generation &+= 1
         let requestedGeneration = generation
         timer.cancel()
+        let previousOutput = desiredOutput?.logMode ?? "none"
         desiredOutput = output
+        logger.log("Output transition previousOutput=\(previousOutput, privacy: .public) newOutput=\(output.logMode, privacy: .public)")
         onOutputChange?(output)
 
         // The callback is intentionally allowed to update the controller. Do not
