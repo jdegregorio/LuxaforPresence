@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusIcon(.unknown)
 
         let menu = NSMenu()
-        menu.addItem(withTitle: "Force ON (Red)", action: #selector(forceOn), keyEquivalent: "o")
+        menu.addItem(withTitle: "Force Solid Red", action: #selector(forceOn), keyEquivalent: "o")
         menu.addItem(withTitle: "Force OFF", action: #selector(forceOff), keyEquivalent: "f")
         menu.addItem(withTitle: "Auto Detect", action: #selector(forceClear), keyEquivalent: "a")
         menu.addItem(NSMenuItem.separator())
@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.updateStatusIcon(state)
         }
         engine.prepare()
+        engine.tick()
         promptForAccessibilityIfNeeded()
 
         timer?.invalidate()
@@ -52,14 +53,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateStatusIcon(_ state: PresenceState) {
         let icon: NSImage? = {
             switch state {
-            case .inMeeting: return StatusIconName.on.image()
-            case .inMeetingSilent: return StatusIconName.on.image()
-            case .notMeeting: return StatusIconName.off.image()
-            case .unknown: return StatusIconName.idle.image()
+            case .zoomQuiet, .voiceRecent, .voiceCooldown:
+                return StatusIconName.on.image()
+            case .available:
+                return StatusIconName.off.image()
+            case .unknown:
+                return StatusIconName.idle.image()
             }
         }()
         statusItem.button?.image = icon
-        statusItem.button?.toolTip = "Luxafor: \(state.rawValue)"
+        statusItem.button?.toolTip = "Luxafor: \(state.displayName)"
         logger.debug("Status icon updated to state \(state.rawValue, privacy: .public)")
     }
 
@@ -109,9 +112,9 @@ Open System Settings → Privacy & Security → Accessibility, then enable this 
         logger.info("Opened Accessibility settings")
     }
 
-    @objc private func forceOn()  { engine.force(.inMeeting) }
-    @objc private func forceOff() { engine.force(.notMeeting) }
-    @objc private func forceClear() { engine.clear(.unknown) }
+    @objc private func forceOn()  { engine.force(.voiceCooldown) }
+    @objc private func forceOff() { engine.force(.available) }
+    @objc private func forceClear() { engine.clearForce() }
     @objc private func openConfigurationFile() {
         do {
             let configurationURL = try configurationFileManager.createFromTemplateIfNeeded()

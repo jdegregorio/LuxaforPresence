@@ -75,10 +75,9 @@ final class ResourceBundleTests: XCTestCase {
     func test_configLoadsDefaultsFromSwiftPMResourceBundle_whenUserConfigIsAbsent() {
         let config = PresenceEngine.Config(userConfigURLs: [])
 
-        XCTAssertEqual(
-            config.enabledMeetingDetectors,
-            Set(["Zoom", "Webex", "Teams", "Slack", "GoogleMeet"])
-        )
+        XCTAssertEqual(config.enabledMeetingDetectors, Set(["Zoom"]))
+        XCTAssertEqual(config.recentVoiceBlinkSeconds, 300)
+        XCTAssertEqual(config.voiceCooldownSeconds, 300)
     }
 
     func test_appResourceBundle_containsConfigAndStatusIcons() {

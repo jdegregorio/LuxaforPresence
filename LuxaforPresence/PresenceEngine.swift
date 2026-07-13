@@ -3,7 +3,7 @@ import OSLog
 
 final class PresenceEngine {
     private enum TickResult {
-        case automatic(PresenceState)
+        case automatic(PresenceSnapshot)
         case forced(PresenceState)
     }
 
@@ -11,7 +11,9 @@ final class PresenceEngine {
         static let defaultPollInterval: TimeInterval = 2.0
         static let minimumPollInterval: TimeInterval = 0.25
         static let defaultVadThreshold = 0.02
-        static let defaultVadGraceSeconds: TimeInterval = 10
+        static let defaultRecentVoiceBlinkSeconds: TimeInterval = 300
+        static let defaultVoiceCooldownSeconds: TimeInterval = 300
+        static let supportedMeetingDetectorNames: Set<String> = ["Zoom"]
 
         var transportMode: TransportMode = .local
         var localWebhookBaseUrl = LocalWebhookEndpoint.defaultBaseURLString
@@ -29,10 +31,11 @@ final class PresenceEngine {
         ]
         var useCalendar = false
         var debugAssumeFrontmostImpliesMic = false
-        var enabledMeetingDetectors: Set<String>?
+        var enabledMeetingDetectors = supportedMeetingDetectorNames
         var vadEnabled = true
         var vadThreshold = defaultVadThreshold
-        var vadGraceSeconds = defaultVadGraceSeconds
+        var recentVoiceBlinkSeconds = defaultRecentVoiceBlinkSeconds
+        var voiceCooldownSeconds = defaultVoiceCooldownSeconds
         private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "Config")
 
         init(
@@ -114,7 +117,14 @@ final class PresenceEngine {
                 debugAssumeFrontmostImpliesMic = debugFlag
             }
             if let detectors = values["enabledMeetingDetectors"] as? [String] {
-                enabledMeetingDetectors = Set(detectors)
+                let requestedDetectors = Set(detectors)
+                enabledMeetingDetectors = requestedDetectors.intersection(Self.supportedMeetingDetectorNames)
+                let ignoredDetectors = requestedDetectors.subtracting(Self.supportedMeetingDetectorNames)
+                if !ignoredDetectors.isEmpty {
+                    logger.log(
+                        "Ignoring non-Zoom meeting detectors for the family-presence profile: \(ignoredDetectors.sorted().joined(separator: ", "), privacy: .public)"
+                    )
+                }
             }
             if let vadFlag = values["vadEnabled"] as? Bool {
                 vadEnabled = vadFlag
@@ -129,11 +139,18 @@ final class PresenceEngine {
                     logger.error("Invalid vadThreshold; expected a finite value greater than 0 and at most 1. Using \(Self.defaultVadThreshold, privacy: .public).")
                 }
             }
-            if let value = values["vadGraceSeconds"] {
-                if let grace = Self.number(from: value), grace.isFinite, grace >= 0 {
-                    vadGraceSeconds = grace
+            if let value = values["recentVoiceBlinkSeconds"] {
+                if let duration = Self.nonNegativeFiniteDuration(from: value) {
+                    recentVoiceBlinkSeconds = duration
                 } else {
-                    logger.error("Invalid vadGraceSeconds; expected a finite non-negative value. Using \(Self.defaultVadGraceSeconds, privacy: .public) seconds.")
+                    logger.error("Invalid recentVoiceBlinkSeconds; expected a finite non-negative value. Using \(Self.defaultRecentVoiceBlinkSeconds, privacy: .public) seconds.")
+                }
+            }
+            if let value = values["voiceCooldownSeconds"] {
+                if let duration = Self.nonNegativeFiniteDuration(from: value) {
+                    voiceCooldownSeconds = duration
+                } else {
+                    logger.error("Invalid voiceCooldownSeconds; expected a finite non-negative value. Using \(Self.defaultVoiceCooldownSeconds, privacy: .public) seconds.")
                 }
             }
         }
@@ -163,18 +180,25 @@ final class PresenceEngine {
             return number.doubleValue
         }
 
+        private static func nonNegativeFiniteDuration(from value: Any) -> TimeInterval? {
+            guard let duration = number(from: value), duration.isFinite, duration >= 0 else {
+                return nil
+            }
+            return duration
+        }
+
         private func logSummary() {
             let finalizedTransportMode = transportMode
             let finalizedPollInterval = pollInterval
             let finalizedBundleCount = meetingBundles.count
             let finalizedUseCalendar = useCalendar
             let finalizedDebugFlag = debugAssumeFrontmostImpliesMic
-            let finalizedMeetingDetectorCount = enabledMeetingDetectors?.count ?? 0
-            let meetingDetectorMode = enabledMeetingDetectors == nil ? "all" : "custom"
+            let finalizedMeetingDetectorCount = enabledMeetingDetectors.count
             let finalizedVadEnabled = vadEnabled
             let finalizedVadThreshold = vadThreshold
-            let finalizedVadGrace = vadGraceSeconds
-            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, meeting bundles count \(finalizedBundleCount, privacy: .public), useCalendar \(finalizedUseCalendar, privacy: .public), debugAssumeFrontmostImpliesMic \(finalizedDebugFlag), meeting detectors \(meetingDetectorMode, privacy: .public) count \(finalizedMeetingDetectorCount, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), vadGraceSeconds \(finalizedVadGrace, privacy: .public)")
+            let finalizedRecentVoiceBlinkSeconds = recentVoiceBlinkSeconds
+            let finalizedVoiceCooldownSeconds = voiceCooldownSeconds
+            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, meeting bundles count \(finalizedBundleCount, privacy: .public), useCalendar \(finalizedUseCalendar, privacy: .public), debugAssumeFrontmostImpliesMic \(finalizedDebugFlag), Zoom-only meeting detectors count \(finalizedMeetingDetectorCount, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), recentVoiceBlinkSeconds \(finalizedRecentVoiceBlinkSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public)")
         }
 
         func makeLuxaforClient() -> LuxaforClientProtocol {
@@ -197,6 +221,7 @@ final class PresenceEngine {
 
     let config: Config
     var onStateChange: ((PresenceState) -> Void)?
+    var onSnapshot: ((PresenceSnapshot) -> Void)?
 
     private let micCam: MicCamSignalProtocol
     private let frontApp: FrontmostAppSignalProtocol
@@ -214,6 +239,11 @@ final class PresenceEngine {
     private let stateLock = NSLock()
     private var pollInFlight = false
     private var pollCompletions: [() -> Void] = []
+    private var automaticReevaluationPending = false
+    private var communicationContextWasActive = false
+    private var lastObservedVoiceActivityDate: Date?
+    private var sessionVoiceActivityDate: Date?
+    private var lastQualifiedVoiceActivityDate: Date?
     private var lastState: PresenceState = .unknown
     private var forcedState: PresenceState?
 
@@ -264,18 +294,20 @@ final class PresenceEngine {
         stateLock.unlock()
         logger.log("Force invoked; new forced state \(state.rawValue, privacy: .public)")
         deliverOnMain { [weak self] in
-            self?.apply(state)
+            guard let self, self.currentForcedState() == state else {
+                self?.logger.debug("Discarding stale direct forced-state transition")
+                return
+            }
+            self.transition(to: state)
         }
     }
 
-    func clear(_ state: PresenceState) {
+    func clearForce() {
         stateLock.lock()
         forcedState = nil
         stateLock.unlock()
-        logger.log("Force invoked; new forced state \(state.rawValue, privacy: .public)")
-        deliverOnMain { [weak self] in
-            self?.apply(state)
-        }
+        logger.log("Manual override cleared; requesting immediate automatic reevaluation")
+        requestAutomaticReevaluation()
     }
 
     /// Schedules one signal evaluation. If the previous evaluation has not completed, the
@@ -312,90 +344,148 @@ final class PresenceEngine {
                 self.pollInFlight = false
                 let completions = self.pollCompletions
                 self.pollCompletions.removeAll(keepingCapacity: true)
+                let shouldReevaluate = self.automaticReevaluationPending
+                self.automaticReevaluationPending = false
                 self.pollLock.unlock()
                 completions.forEach { $0() }
+                if shouldReevaluate {
+                    self.tick()
+                }
             }
         }
     }
 
-    private func evaluateSignals() -> PresenceState {
-        let cameraActive = micCam.isCameraInUse()
-        if cameraActive {
-            logger.debug("Camera active; skipping remaining signal reads")
-            logger.debug("Decision path: cameraActive")
-            return .inMeeting
-        }
-
-        logger.debug("Evaluating meeting detectors")
-        let detectorMeetingActive = meetingDetector.isMeetingActive()
-        logger.debug("Meeting detector evaluation complete; active=\(detectorMeetingActive)")
-        let frontmostIsMeetingApp = config.debugAssumeFrontmostImpliesMic
-            ? frontApp.isFrontmostIn(allowlist: config.meetingBundles)
+    private func evaluateSignals() -> PresenceSnapshot {
+        logger.debug("Evaluating Zoom meeting detector")
+        let zoomActive = meetingDetector.isMeetingActive()
+        let microphoneActive = micCam.isMicrophoneInUseByAnotherApplication()
+        let voiceCurrentlyAboveThreshold = config.vadEnabled
+            ? voiceActivity.isVoiceActive()
             : false
-        let debugForcingMeeting = config.debugAssumeFrontmostImpliesMic && frontmostIsMeetingApp
-        if debugForcingMeeting {
-            logger.debug("Debug flag forcing meeting active because frontmost app is allowlisted")
-        }
-        let calendarMeetingActive = config.useCalendar ? calendar.hasOngoingMeetingEvent() : false
-        let meetingActive = detectorMeetingActive || calendarMeetingActive || debugForcingMeeting
-        let micActive = micCam.isMicrophoneInUseByAnotherApplication()
-        let presenceActive = meetingActive || micActive
-        let presenceSource = meetingActive ? "meeting" : "microphone"
-        let voiceActive = config.vadEnabled ? voiceActivity.isVoiceActive() : false
-        let lastVoiceActivityDate = config.vadEnabled ? voiceActivity.lastVoiceActivityDate : nil
-        let now = now()
-        let secondsSinceVoiceActivity = lastVoiceActivityDate.map { now.timeIntervalSince($0) }
-        let withinGrace = config.vadEnabled ? (secondsSinceVoiceActivity.map { $0 <= config.vadGraceSeconds } ?? false) : false
+        let observedVoiceActivityDate = config.vadEnabled
+            ? voiceActivity.lastVoiceActivityDate
+            : nil
+        let evaluatedAt = now()
+        let communicationContextActive = zoomActive || microphoneActive
+        let sessionVoiceActivityDate = updateVoiceSession(
+            observedVoiceActivityDate: observedVoiceActivityDate,
+            microphoneActive: microphoneActive,
+            communicationContextActive: communicationContextActive
+        )
 
-        let newState: PresenceState
-        let decisionPath: String
-        if presenceActive {
-            if !config.vadEnabled {
-                newState = .inMeeting
-                decisionPath = "\(presenceSource)+vadDisabled"
-            } else if voiceActive {
-                newState = .inMeeting
-                decisionPath = "\(presenceSource)+voiceActive"
-            } else if withinGrace {
-                newState = .inMeeting
-                decisionPath = "\(presenceSource)+vadGrace"
-            } else {
-                newState = .inMeetingSilent
-                decisionPath = "\(presenceSource)+vadSilent"
-            }
-        } else {
-            newState = .notMeeting
-            decisionPath = "noMeeting"
-        }
+        let decision = evaluateState(
+            zoomActive: zoomActive,
+            microphoneActive: microphoneActive,
+            lastVoiceActivityDate: sessionVoiceActivityDate,
+            evaluatedAt: evaluatedAt
+        )
+        let snapshot = PresenceSnapshot(
+            state: decision.state,
+            zoomActive: zoomActive,
+            microphoneActive: microphoneActive,
+            voiceCurrentlyAboveThreshold: voiceCurrentlyAboveThreshold,
+            lastVoiceActivityDate: lastQualifiedVoiceActivityDate,
+            evaluatedAt: evaluatedAt,
+            decisionPath: decision.path
+        )
 
         logger.debug(
-            "Signals -> meeting detector: \(detectorMeetingActive), calendar: \(calendarMeetingActive), debug frontmost: \(debugForcingMeeting), camera: \(cameraActive), mic: \(micActive), vadEnabled: \(self.config.vadEnabled), voiceActive: \(voiceActive), secondsSinceVoiceActivity: \(String(describing: secondsSinceVoiceActivity))"
+            "Signals -> Zoom: \(zoomActive), microphone: \(microphoneActive), vadEnabled: \(self.config.vadEnabled), voiceAboveThreshold: \(voiceCurrentlyAboveThreshold), secondsSinceVoiceActivity: \(String(describing: snapshot.secondsSinceVoiceActivity))"
         )
-        logger.debug("Decision path: \(decisionPath, privacy: .public)")
-        return newState
+        logger.debug("Decision path: \(snapshot.decisionPath.rawValue, privacy: .public)")
+        return snapshot
+    }
+
+    /// Accepts a new voice timestamp only while macOS currently reports external
+    /// microphone use. The accepted timestamp is scoped to one continuously observed
+    /// communication context so ending a call cannot color a later quiet session red.
+    private func updateVoiceSession(
+        observedVoiceActivityDate: Date?,
+        microphoneActive: Bool,
+        communicationContextActive: Bool
+    ) -> Date? {
+        let observationChanged = observedVoiceActivityDate != lastObservedVoiceActivityDate
+        lastObservedVoiceActivityDate = observedVoiceActivityDate
+
+        guard communicationContextActive else {
+            communicationContextWasActive = false
+            sessionVoiceActivityDate = nil
+            return nil
+        }
+
+        if !communicationContextWasActive {
+            sessionVoiceActivityDate = nil
+        }
+        communicationContextWasActive = true
+
+        if observationChanged, microphoneActive, let observedVoiceActivityDate {
+            sessionVoiceActivityDate = observedVoiceActivityDate
+            lastQualifiedVoiceActivityDate = observedVoiceActivityDate
+        }
+        return sessionVoiceActivityDate
+    }
+
+    private func evaluateState(
+        zoomActive: Bool,
+        microphoneActive: Bool,
+        lastVoiceActivityDate: Date?,
+        evaluatedAt: Date
+    ) -> (state: PresenceState, path: PresenceDecisionPath) {
+        guard zoomActive || microphoneActive else {
+            return (.available, .noCommunicationContext)
+        }
+
+        if let lastVoiceActivityDate {
+            let secondsSinceVoiceActivity = max(
+                0,
+                evaluatedAt.timeIntervalSince(lastVoiceActivityDate)
+            )
+            if secondsSinceVoiceActivity < config.recentVoiceBlinkSeconds {
+                return (.voiceRecent, .recentVoice)
+            }
+
+            let secondsIntoCooldown = secondsSinceVoiceActivity
+                - config.recentVoiceBlinkSeconds
+            if secondsIntoCooldown < config.voiceCooldownSeconds {
+                return (.voiceCooldown, .voiceCooldown)
+            }
+        }
+
+        if zoomActive {
+            return (.zoomQuiet, .zoomQuiet)
+        }
+        return (.available, .available)
     }
 
     private func finishTick(_ result: TickResult) {
         switch result {
-        case .automatic(let newState):
+        case .automatic(let snapshot):
             guard currentForcedState() == nil else {
                 logger.debug("Discarding automatic result because a forced state was selected during polling")
                 return
             }
-            logger.log("Proposed state \(newState.rawValue, privacy: .public) (previous \(self.lastState.rawValue, privacy: .public))")
-            if newState != lastState {
-                apply(newState)
-            } else {
-                logger.debug("State unchanged; no Luxafor update")
-            }
+            logger.log("Proposed state \(snapshot.state.rawValue, privacy: .public) (previous \(self.lastState.rawValue, privacy: .public))")
+            onSnapshot?(snapshot)
+            transition(to: snapshot.state)
         case .forced(let state):
             guard currentForcedState() == state else {
                 logger.debug("Discarding stale forced-state result")
                 return
             }
             logger.debug("Forced state active; bypassing signals")
-            apply(state)
+            transition(to: state)
         }
+    }
+
+    private func requestAutomaticReevaluation() {
+        pollLock.lock()
+        guard pollInFlight else {
+            pollLock.unlock()
+            tick()
+            return
+        }
+        automaticReevaluationPending = true
+        pollLock.unlock()
     }
 
     private func currentForcedState() -> PresenceState? {
@@ -412,15 +502,29 @@ final class PresenceEngine {
         }
     }
 
+    private func transition(to state: PresenceState) {
+        guard state != lastState else {
+            logger.debug("State unchanged; no Luxafor update")
+            return
+        }
+        apply(state)
+    }
+
     private func apply(_ state: PresenceState) {
         lastState = state
         onStateChange?(state)
         logger.log("Applying state \(state.rawValue, privacy: .public)")
         switch state {
-        case .inMeeting:  luxafor.turnOnRed(userId: config.remoteWebhookUserId)
-        case .inMeetingSilent: luxafor.turnOnYellow(userId: config.remoteWebhookUserId)
-        case .notMeeting: luxafor.turnOff(userId: config.remoteWebhookUserId)
-        case .unknown: break
+        case .available:
+            luxafor.turnOff(userId: config.remoteWebhookUserId)
+        case .zoomQuiet:
+            luxafor.turnOnYellow(userId: config.remoteWebhookUserId)
+        case .voiceRecent, .voiceCooldown:
+            // PR 1 intentionally uses solid red for both voice states. A dedicated
+            // blink controller will present voiceRecent in the next feature slice.
+            luxafor.turnOnRed(userId: config.remoteWebhookUserId)
+        case .unknown:
+            luxafor.turnOff(userId: config.remoteWebhookUserId)
         }
     }
 }

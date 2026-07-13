@@ -29,16 +29,14 @@
     <key>enabledMeetingDetectors</key>
     <array>
         <string>Zoom</string>
-        <string>Webex</string>
-        <string>Teams</string>
-        <string>Slack</string>
-        <string>GoogleMeet</string>
     </array>
     <key>vadEnabled</key>
     <true/>
     <key>vadThreshold</key>
     <real>0.02</real>
-    <key>vadGraceSeconds</key>
-    <real>10</real>
+    <key>recentVoiceBlinkSeconds</key>
+    <real>300</real>
+    <key>voiceCooldownSeconds</key>
+    <real>300</real>
 </dict>
 </plist>
