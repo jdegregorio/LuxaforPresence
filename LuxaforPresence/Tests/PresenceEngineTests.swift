@@ -78,7 +78,10 @@ final class PresenceEngineTests: XCTestCase {
         tickAndWait(engine)
 
         XCTAssertEqual(harness.states, [.available])
-        XCTAssertNil(harness.snapshots.last?.lastVoiceActivityDate)
+        XCTAssertEqual(
+            harness.snapshots.last?.lastVoiceActivityDate,
+            harness.currentDate
+        )
     }
 
     func test_voiceImmediatelyBeforeRecentBoundary_returnsVoiceRecent() {
@@ -194,6 +197,7 @@ final class PresenceEngineTests: XCTestCase {
             [.red(harness.config.remoteWebhookUserId), .off(harness.config.remoteWebhookUserId)]
         )
         XCTAssertEqual(harness.voiceActivity.lastVoiceActivityDate, harness.currentDate)
+        XCTAssertEqual(harness.voiceActivity.contextResetCount, 1)
     }
 
     func test_newCommunicationContext_doesNotReusePriorSessionVoice() {
@@ -225,9 +229,10 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .zoomQuiet)
     }
 
-    func test_voiceObservedOutsideMicrophoneContext_doesNotColorLaterZoomSessionRed() {
+    func test_qualifiedVoiceObservedAfterContextEnds_isDiagnosticOnlyForLaterZoomSession() {
         let harness = PresenceEngineHarness()
-        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let qualifiedVoiceDate = harness.currentDate
+        harness.voiceActivity.lastActivityDate = qualifiedVoiceDate
         let engine = harness.makeEngine()
 
         tickAndWait(engine)
@@ -243,7 +248,10 @@ final class PresenceEngineTests: XCTestCase {
                 .yellow(harness.config.remoteWebhookUserId),
             ]
         )
-        XCTAssertNil(harness.snapshots.last?.lastVoiceActivityDate)
+        XCTAssertEqual(
+            harness.snapshots.last?.lastVoiceActivityDate,
+            qualifiedVoiceDate
+        )
     }
 
     func test_newVoiceDuringCooldown_returnsToVoiceRecent() {
@@ -295,24 +303,6 @@ final class PresenceEngineTests: XCTestCase {
         tickAndWait(engine)
 
         XCTAssertEqual(harness.states, [.available])
-    }
-
-    func test_cameraCalendarAndFrontmostSignals_doNotAffectFamilyPresenceState() {
-        let harness = PresenceEngineHarness { config in
-            config.useCalendar = true
-            config.debugAssumeFrontmostImpliesMic = true
-        }
-        harness.micCam.cameraActive = true
-        harness.frontApp.isMeetingApp = true
-        harness.calendar.ongoingMeeting = true
-        let engine = harness.makeEngine()
-
-        tickAndWait(engine)
-
-        XCTAssertEqual(harness.states, [.available])
-        XCTAssertEqual(harness.micCam.cameraReadCount, 0)
-        XCTAssertEqual(harness.frontApp.readCount, 0)
-        XCTAssertEqual(harness.calendar.readCount, 0)
     }
 
     func test_snapshot_containsSignalsTimestampAndDecisionPath() throws {
@@ -485,6 +475,122 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.outputs, [.solid(.yellow)])
     }
 
+    func test_localHeartbeat_reassertsBlinkPhaseWithoutRestartingCadence() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        engine.prepare()
+        tickAndWait(engine)
+        let blinkHandler = harness.outputTimer.handler
+        harness.localOutputHeartbeat.fire()
+
+        XCTAssertEqual(harness.outputTimer.scheduledIntervals, [0.75])
+        XCTAssertEqual(harness.localOutputHeartbeat.startCount, 1)
+        XCTAssertNotNil(blinkHandler)
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [
+                .red(harness.config.remoteWebhookUserId),
+                .forced(.red, harness.config.remoteWebhookUserId),
+            ]
+        )
+    }
+
+    func test_captureTimeQualifiedVoice_isAcceptedAfterMicrophoneMutesBeforePoll() throws {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = false
+        let engine = harness.makeEngine()
+        let recentVoiceApplied = expectation(description: "recent voice applied")
+        engine.onStateChange = { state in
+            harness.states.append(state)
+            if state == .voiceRecent {
+                recentVoiceApplied.fulfill()
+            }
+        }
+
+        harness.voiceActivity.emitQualifyingActivity(at: harness.currentDate)
+
+        wait(for: [recentVoiceApplied], timeout: 2)
+        XCTAssertEqual(harness.states, [.voiceRecent])
+        XCTAssertFalse(try XCTUnwrap(harness.snapshots.last).microphoneActive)
+    }
+
+    func test_resetVoiceTimer_withActiveZoom_returnsToYellow() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+        tickAndWait(engine)
+        let resetStateApplied = expectation(description: "reset state applied")
+        engine.onStateChange = { state in
+            harness.states.append(state)
+            if state == .zoomQuiet {
+                resetStateApplied.fulfill()
+            }
+        }
+
+        engine.resetVoiceTimer()
+
+        wait(for: [resetStateApplied], timeout: 2)
+        XCTAssertEqual(harness.states, [.voiceRecent, .zoomQuiet])
+        XCTAssertNil(harness.snapshots.last?.lastVoiceActivityDate)
+    }
+
+    func test_resetVoiceTimer_withMicrophoneOnly_returnsToOff() {
+        let harness = PresenceEngineHarness()
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+        tickAndWait(engine)
+        let resetStateApplied = expectation(description: "reset state applied")
+        engine.onStateChange = { state in
+            harness.states.append(state)
+            if state == .available, harness.states.count > 1 {
+                resetStateApplied.fulfill()
+            }
+        }
+
+        engine.resetVoiceTimer()
+
+        wait(for: [resetStateApplied], timeout: 2)
+        XCTAssertEqual(harness.states, [.voiceRecent, .available])
+    }
+
+    func test_resetDuringInFlightPoll_discardsPreResetVoiceResult() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        let blockingVoice = BlockingVoiceActivitySignal(
+            lastActivityDate: harness.currentDate
+        )
+        let engine = harness.makeEngine(voiceActivity: blockingVoice)
+        tickAndWait(engine)
+        harness.currentDate = harness.currentDate.addingTimeInterval(301)
+        blockingVoice.blockNextRead()
+        let staleTickCompleted = expectation(description: "stale tick completed")
+        let resetStateApplied = expectation(description: "reset state applied")
+        engine.onStateChange = { state in
+            harness.states.append(state)
+            if state == .zoomQuiet {
+                resetStateApplied.fulfill()
+            }
+        }
+
+        engine.tick { staleTickCompleted.fulfill() }
+        XCTAssertEqual(blockingVoice.waitUntilBlocked(), .success)
+        engine.resetVoiceTimer()
+        blockingVoice.resumeRead()
+
+        wait(for: [staleTickCompleted, resetStateApplied], timeout: 2)
+        XCTAssertEqual(harness.states, [.voiceRecent, .zoomQuiet])
+        XCTAssertFalse(harness.states.contains(.voiceCooldown))
+    }
+
     func test_sleepWake_reevaluatesBeforeRestartingAndReassertingOutput() {
         let harness = PresenceEngineHarness { config in
             config.recentVoiceBlinkSeconds = 5
@@ -518,6 +624,9 @@ final class PresenceEngineTests: XCTestCase {
             ]
         )
         XCTAssertGreaterThanOrEqual(harness.outputTimer.cancelCount, 3)
+        XCTAssertEqual(harness.voiceActivity.resumeCount, 1)
+        XCTAssertEqual(harness.localServiceRecoveryMonitor.startCount, 1)
+        XCTAssertEqual(harness.localOutputHeartbeat.startCount, 1)
     }
 
     func test_wakeDuringPreSleepPoll_waitsForDistinctFreshEvaluationBeforeReasserting() {
@@ -548,6 +657,31 @@ final class PresenceEngineTests: XCTestCase {
                 .forced(.off, harness.config.remoteWebhookUserId),
             ]
         )
+    }
+
+    func test_secondSleepDuringWakePoll_doesNotResumeOutputOrRecovery() {
+        let harness = PresenceEngineHarness()
+        let detector = OneShotBlockingMeetingDetector(initialResult: true)
+        let engine = harness.makeEngine(meetingDetector: detector)
+        tickAndWait(engine)
+        engine.suspendOutput()
+        detector.blockNextCall()
+        let wakeCompleted = expectation(description: "stale wake completion")
+        engine.resumeOutput { wakeCompleted.fulfill() }
+        XCTAssertEqual(detector.waitUntilBlocked(), .success)
+
+        engine.suspendOutput()
+        detector.resumeBlockedCall()
+
+        wait(for: [wakeCompleted], timeout: 2)
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [.yellow(harness.config.remoteWebhookUserId)]
+        )
+        XCTAssertEqual(harness.voiceActivity.suspendCount, 2)
+        XCTAssertEqual(harness.voiceActivity.resumeCount, 0)
+        XCTAssertEqual(harness.localOutputHeartbeat.startCount, 0)
+        XCTAssertEqual(harness.localOutputHeartbeat.stopCount, 0)
     }
 
     func test_clearForceDuringWakePoll_waitsForFinalAutomaticEvaluationBeforeReasserting() {
@@ -583,6 +717,38 @@ final class PresenceEngineTests: XCTestCase {
         )
     }
 
+    func test_recoveryLifecycle_startsReassertsSuspendsResumesAndRejectsShutdownCallbacks() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        let engine = harness.makeEngine()
+
+        engine.prepare()
+        tickAndWait(engine)
+        harness.localServiceRecoveryMonitor.reconnect()
+        engine.suspendOutput()
+
+        let wakeCompleted = expectation(description: "wake recovery resumed")
+        engine.resumeOutput { wakeCompleted.fulfill() }
+        wait(for: [wakeCompleted], timeout: 2)
+        engine.shutdownOutput()
+        harness.localServiceRecoveryMonitor.reconnect()
+        harness.localOutputHeartbeat.fire()
+
+        XCTAssertEqual(harness.localServiceRecoveryMonitor.startCount, 2)
+        XCTAssertEqual(harness.localServiceRecoveryMonitor.stopCount, 2)
+        XCTAssertEqual(harness.localOutputHeartbeat.startCount, 2)
+        XCTAssertEqual(harness.localOutputHeartbeat.stopCount, 2)
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [
+                .yellow(harness.config.remoteWebhookUserId),
+                .forced(.yellow, harness.config.remoteWebhookUserId),
+                .forced(.yellow, harness.config.remoteWebhookUserId),
+                .forced(.off, harness.config.remoteWebhookUserId),
+            ]
+        )
+    }
+
     private func tickAndWait(
         _ engine: PresenceEngine,
         file: StaticString = #filePath,
@@ -599,12 +765,12 @@ final class PresenceEngineTests: XCTestCase {
 private final class PresenceEngineHarness {
     var config: PresenceEngine.Config
     let micCam = FakeMicCamSignal()
-    let frontApp = FakeFrontmostAppSignal()
-    let calendar = FakeCalendarSignal()
     let meetingDetector = FakeMeetingDetector()
     let voiceActivity = FakeVoiceActivitySignal()
     let luxafor = FakeLuxaforClient()
     let outputTimer = FakeLightOutputTimer()
+    let localServiceRecoveryMonitor = FakeLocalServiceRecoveryMonitor()
+    let localOutputHeartbeat = FakeLocalOutputHeartbeat()
     var currentDate = Date(timeIntervalSinceReferenceDate: 1_000_000)
     var states: [PresenceState] = []
     var snapshots: [PresenceSnapshot] = []
@@ -616,16 +782,19 @@ private final class PresenceEngineHarness {
         self.config = config
     }
 
-    func makeEngine(meetingDetector: MeetingDetectorProtocol? = nil) -> PresenceEngine {
+    func makeEngine(
+        meetingDetector: MeetingDetectorProtocol? = nil,
+        voiceActivity: VoiceActivitySignalProtocol? = nil
+    ) -> PresenceEngine {
         let engine = PresenceEngine(
             config: config,
             micCam: micCam,
-            frontApp: frontApp,
-            calendar: calendar,
             meetingDetector: meetingDetector ?? self.meetingDetector,
-            voiceActivity: voiceActivity,
+            voiceActivity: voiceActivity ?? self.voiceActivity,
             luxafor: luxafor,
             outputTimer: outputTimer,
+            localServiceRecoveryMonitor: localServiceRecoveryMonitor,
+            localOutputHeartbeat: localOutputHeartbeat,
             now: { [unowned self] in currentDate }
         )
         engine.onStateChange = { [weak self] state in
@@ -645,49 +814,11 @@ private final class PresenceEngineHarness {
 
 private final class FakeMicCamSignal: MicCamSignalProtocol {
     var microphoneActive = false
-    var cameraActive = false
     private(set) var microphoneReadCount = 0
-    private(set) var cameraReadCount = 0
-
-    func requestAccessIfNeeded() {}
 
     func isMicrophoneInUseByAnotherApplication() -> Bool {
         microphoneReadCount += 1
         return microphoneActive
-    }
-
-    func isCameraInUse() -> Bool {
-        cameraReadCount += 1
-        return cameraActive
-    }
-
-    func anyInUse() -> Bool {
-        microphoneActive || cameraActive
-    }
-}
-
-private final class FakeFrontmostAppSignal: FrontmostAppSignalProtocol {
-    var isMeetingApp = false
-    private(set) var readCount = 0
-
-    func isFrontmostIn(allowlist: Set<String>) -> Bool {
-        readCount += 1
-        return isMeetingApp
-    }
-}
-
-private final class FakeCalendarSignal: CalendarSignalProtocol {
-    var granted = true
-    var ongoingMeeting = false
-    private(set) var readCount = 0
-
-    func requestAccess(completion: @escaping (Bool) -> Void) {
-        completion(granted)
-    }
-
-    func hasOngoingMeetingEvent() -> Bool {
-        readCount += 1
-        return ongoingMeeting
     }
 }
 
@@ -859,8 +990,13 @@ private final class FakeLightOutputTimer: LightOutputTimerProtocol {
 }
 
 private final class FakeVoiceActivitySignal: VoiceActivitySignalProtocol {
+    var onQualifyingActivity: ((Date) -> Void)?
     var active = false
     var lastActivityDate: Date?
+    private(set) var suspendCount = 0
+    private(set) var resumeCount = 0
+    private(set) var resetCount = 0
+    private(set) var contextResetCount = 0
 
     func requestAccessIfNeeded() {}
 
@@ -870,5 +1006,129 @@ private final class FakeVoiceActivitySignal: VoiceActivitySignalProtocol {
 
     var lastVoiceActivityDate: Date? {
         lastActivityDate
+    }
+
+    func suspend() {
+        suspendCount += 1
+        active = false
+    }
+
+    func resume() {
+        resumeCount += 1
+    }
+
+    func resetDetectionContext() {
+        contextResetCount += 1
+        active = false
+    }
+
+    func reset() {
+        resetCount += 1
+        active = false
+        lastActivityDate = nil
+    }
+
+    func emitQualifyingActivity(at date: Date) {
+        lastActivityDate = date
+        onQualifyingActivity?(date)
+    }
+}
+
+private final class FakeLocalServiceRecoveryMonitor: LocalServiceRecoveryMonitoring {
+    var onReconnect: (() -> Void)?
+    private(set) var isRunning = false
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+
+    func start() {
+        guard !isRunning else { return }
+        isRunning = true
+        startCount += 1
+    }
+
+    func stop() {
+        guard isRunning else { return }
+        isRunning = false
+        stopCount += 1
+    }
+
+    func reconnect() {
+        onReconnect?()
+    }
+}
+
+private final class FakeLocalOutputHeartbeat: LocalOutputHeartbeating {
+    var onHeartbeat: (() -> Void)?
+    private(set) var isRunning = false
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+
+    func start() {
+        guard !isRunning else { return }
+        isRunning = true
+        startCount += 1
+    }
+
+    func stop() {
+        guard isRunning else { return }
+        isRunning = false
+        stopCount += 1
+    }
+
+    func fire() {
+        onHeartbeat?()
+    }
+}
+
+private final class BlockingVoiceActivitySignal: VoiceActivitySignalProtocol {
+    var onQualifyingActivity: ((Date) -> Void)?
+
+    private let blocked = DispatchSemaphore(value: 0)
+    private let resumeSignal = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var shouldBlockNextRead = false
+    private var storedActivityDate: Date?
+
+    init(lastActivityDate: Date?) {
+        storedActivityDate = lastActivityDate
+    }
+
+    var lastVoiceActivityDate: Date? {
+        lock.lock()
+        let capturedDate = storedActivityDate
+        let shouldBlock = shouldBlockNextRead
+        shouldBlockNextRead = false
+        lock.unlock()
+        if shouldBlock {
+            blocked.signal()
+            _ = resumeSignal.wait(timeout: .now() + 2)
+        }
+        return capturedDate
+    }
+
+    func requestAccessIfNeeded() {}
+    func isVoiceActive() -> Bool { false }
+    func suspend() {}
+    func resume() {}
+    func resetDetectionContext() {}
+
+    func reset() {
+        lock.lock()
+        storedActivityDate = nil
+        lock.unlock()
+    }
+
+    func blockNextRead() {
+        lock.lock()
+        shouldBlockNextRead = true
+        lock.unlock()
+    }
+
+    func waitUntilBlocked() -> DispatchTimeoutResult {
+        blocked.wait(timeout: .now() + 1)
+    }
+
+    func resumeRead() {
+        resumeSignal.signal()
     }
 }

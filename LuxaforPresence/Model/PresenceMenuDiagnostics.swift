@@ -1,0 +1,80 @@
+import Foundation
+
+struct PresenceMenuDiagnostics: Equatable {
+    let statusTitle: String
+    let outputTitle: String
+    let zoomTitle: String
+    let microphoneTitle: String
+    let voiceSignalTitle: String
+    let lastVoiceTitle: String
+    let flashingRemainingTitle: String
+    let cooldownRemainingTitle: String
+
+    init(
+        state: PresenceState,
+        output: LightOutput?,
+        snapshot: PresenceSnapshot?,
+        recentVoiceBlinkSeconds: TimeInterval,
+        voiceCooldownSeconds: TimeInterval,
+        manualOverride: PresenceState? = nil,
+        now: Date
+    ) {
+        statusTitle = "Status: \(state.displayName)"
+        outputTitle = "Output: \(output?.menuDisplayName ?? "Unknown")"
+        zoomTitle = "Zoom: \(snapshot.map { $0.zoomActive ? "Active" : "Inactive" } ?? "Unknown")"
+        microphoneTitle = "Microphone: \(snapshot.map { $0.microphoneActive ? "In Use" : "Not In Use" } ?? "Unknown")"
+        voiceSignalTitle = "Voice Signal: \(snapshot.map { $0.voiceCurrentlyAboveThreshold ? "Active" : "Inactive" } ?? "Unknown")"
+
+        let elapsed = snapshot?.lastVoiceActivityDate.map {
+            max(0, now.timeIntervalSince($0))
+        }
+        if let elapsed {
+            lastVoiceTitle = "Last Voice: \(Self.formatElapsed(elapsed)) ago"
+        } else {
+            lastVoiceTitle = "Last Voice: Never"
+        }
+
+        if manualOverride == nil, state == .voiceRecent, let elapsed {
+            flashingRemainingTitle = "Flashing Remaining: \(Self.formatRemaining(recentVoiceBlinkSeconds - elapsed))"
+        } else {
+            flashingRemainingTitle = "Flashing Remaining: —"
+        }
+
+        if manualOverride == nil, state == .voiceCooldown, let elapsed {
+            let remaining = recentVoiceBlinkSeconds + voiceCooldownSeconds - elapsed
+            cooldownRemainingTitle = "Cooldown Remaining: \(Self.formatRemaining(remaining))"
+        } else {
+            cooldownRemainingTitle = "Cooldown Remaining: —"
+        }
+    }
+
+    var titles: [String] {
+        [
+            statusTitle,
+            outputTitle,
+            zoomTitle,
+            microphoneTitle,
+            voiceSignalTitle,
+            lastVoiceTitle,
+            flashingRemainingTitle,
+            cooldownRemainingTitle,
+        ]
+    }
+
+    private static func formatElapsed(_ interval: TimeInterval) -> String {
+        format(seconds: Int(max(0, interval).rounded(.down)))
+    }
+
+    private static func formatRemaining(_ interval: TimeInterval) -> String {
+        format(seconds: Int(max(0, interval).rounded(.up)))
+    }
+
+    private static func format(seconds: Int) -> String {
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        let minutes = seconds / 60
+        let remainder = seconds % 60
+        return remainder == 0 ? "\(minutes)m" : "\(minutes)m \(remainder)s"
+    }
+}

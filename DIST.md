@@ -28,7 +28,7 @@ NOTARY_PROFILE="LuxaforPresenceNotary" \
 The script performs the steps in the required order:
 
 1. Build and assemble the app once.
-2. Sign the app with hardened runtime and the required media entitlements.
+2. Sign the app with hardened runtime and the microphone entitlement.
 3. Verify and notarize the app, then staple its ticket.
 4. Create and sign the DMG from the stapled app.
 5. Notarize and staple the DMG.
@@ -50,3 +50,5 @@ Tag builds run tests first and then require these repository secrets:
 
 If any signing or notarization input is absent, the release job fails instead of uploading an untrusted artifact.
 The workflow uploads only the notarized DMG; publishing the `.app` directory directly would not preserve executable permissions.
+
+The DMG includes an Applications shortcut. Launch-at-login registration is supported only after the app has been copied to `/Applications` or `~/Applications`; do not validate login-item behavior from the mounted image or an App-Translocated path.

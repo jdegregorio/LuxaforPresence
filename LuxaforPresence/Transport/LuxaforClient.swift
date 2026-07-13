@@ -7,7 +7,7 @@ protocol LuxaforClientProtocol {
 
 final class LuxaforClient: LuxaforClientProtocol {
     private let endpoint = URL(string: "https://api.luxafor.com/webhook/v1/actions/solid_color")!
-    private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "LuxaforClient")
+    private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "LuxaforClient")
     private let sender: LatestWinsRequestSender
 
     init(session: URLSession = URLSession(configuration: .ephemeral)) {

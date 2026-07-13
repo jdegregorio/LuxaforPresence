@@ -2,6 +2,12 @@
 
 All notable changes to LuxaforPresence will be documented here.
 
+## Unreleased
+
+- Add the family-office state timeline: quiet Zoom calls are yellow, recent voice flashes red, cooldown is solid red, and ended sessions turn off immediately.
+- Harden local, capture-time-gated voice activity with a 250 ms debounce, immediate state reevaluation, privacy-minimal permissions, and sleep-safe lifecycle handling.
+- Add complete menu diagnostics and overrides, default-on launch at login, and bounded local-output recovery for Luxafor desktop and device restarts.
+
 ## [1.6.0] – 2026-07-12
 
 - Treat microphone use by recording and dictation apps as presence evidence, while voice activity selects red or yellow.

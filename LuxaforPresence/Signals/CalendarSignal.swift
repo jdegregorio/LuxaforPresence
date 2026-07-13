@@ -3,7 +3,7 @@ import OSLog
 
 final class CalendarSignal: CalendarSignalProtocol {
     private lazy var store = EKEventStore()
-    private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "CalendarSignal")
+    private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "CalendarSignal")
 
     // Call once at startup if using calendar
     func requestAccess(completion: @escaping (Bool) -> Void) {

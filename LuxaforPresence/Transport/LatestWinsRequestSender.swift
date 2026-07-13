@@ -14,7 +14,7 @@ final class LatestWinsRequestSender {
 
     private let session: URLSession
     private let logger: Logger
-    private let queue = DispatchQueue(label: "com.example.LuxaforPresence.webhook-delivery")
+    private let queue = DispatchQueue(label: "com.jdegregorio.LuxaforPresence.webhook-delivery")
 
     private var generation: UInt64 = 0
     private var desiredRequest: DesiredRequest?

@@ -2,7 +2,7 @@ import AppKit
 import OSLog
 
 final class FrontmostAppSignal: FrontmostAppSignalProtocol {
-    private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "FrontmostAppSignal")
+    private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "FrontmostAppSignal")
 
     func isFrontmostIn(allowlist: Set<String>) -> Bool {
         guard let app = NSWorkspace.shared.frontmostApplication else {

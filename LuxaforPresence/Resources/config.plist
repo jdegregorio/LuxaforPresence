@@ -12,33 +12,21 @@
     <string>YOUR_USER_ID_HERE</string>
     <key>pollInterval</key>
     <real>2</real>
-    <key>meetingBundles</key>
-    <array>
-        <string>us.zoom.xos</string>
-        <string>com.microsoft.teams2</string>
-        <string>com.microsoft.teams</string>
-        <string>com.cisco.webex.meetingapp</string>
-        <string>com.slack.slack</string>
-        <string>com.google.Chrome</string>
-        <string>com.apple.Safari</string>
-    </array>
-    <key>useCalendar</key>
-    <false/>
-    <key>debugAssumeFrontmostImpliesMic</key>
-    <false/>
-    <key>enabledMeetingDetectors</key>
-    <array>
-        <string>Zoom</string>
-    </array>
+    <key>detectZoom</key>
+    <true/>
     <key>vadEnabled</key>
     <true/>
     <key>vadThreshold</key>
     <real>0.02</real>
+    <key>vadMinimumActiveMilliseconds</key>
+    <integer>250</integer>
     <key>recentVoiceBlinkSeconds</key>
     <real>300</real>
     <key>voiceCooldownSeconds</key>
     <real>300</real>
     <key>blinkIntervalMilliseconds</key>
     <integer>750</integer>
+    <key>localOutputReassertSeconds</key>
+    <integer>30</integer>
 </dict>
 </plist>

@@ -4,7 +4,7 @@ import OSLog
 final class LuxaforLocalWebhookClient: LuxaforClientProtocol {
     private let endpoint: LocalWebhookEndpoint
     private let token: String
-    private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "LuxaforLocalWebhookClient")
+    private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "LuxaforLocalWebhookClient")
     private let sender: LatestWinsRequestSender
 
     convenience init(
