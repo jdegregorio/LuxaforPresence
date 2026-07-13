@@ -37,7 +37,7 @@ final class PresenceEngine {
 
         init(
             userConfigURLs: [URL]? = nil,
-            bundledConfigBundle: Bundle = .module,
+            bundledConfigBundle: Bundle = AppResourceBundle.bundle,
         ) {
             // Try to load from user's config directory first
             let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("LuxaforPresence/config.plist")

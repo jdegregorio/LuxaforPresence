@@ -59,6 +59,14 @@ jobs:
         env:
           CLANG_MODULE_CACHE_PATH: ${{ env.CLANG_MODULE_CACHE_PATH }}
 
+      - name: Verify packaged app signing layout
+        run: |
+          ./scripts/package-dmg.sh -c release -n LuxaforPresence-ci
+          codesign --force --deep --sign - dist/LuxaforPresence.app
+          codesign --verify --deep --strict --verbose=2 dist/LuxaforPresence.app
+        env:
+          CLANG_MODULE_CACHE_PATH: ${{ env.CLANG_MODULE_CACHE_PATH }}
+
   build_dmg:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build_and_test
