@@ -19,16 +19,15 @@ env:
 
 jobs:
   build_and_test:
-    if: startsWith(github.ref, 'refs/tags/v') == false
     runs-on: macos-26
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: true
 
       - name: Cache build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             .build
@@ -37,7 +36,7 @@ jobs:
           restore-keys: ${{ runner.os }}-swift-
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: "26.1"
 
@@ -62,15 +61,16 @@ jobs:
 
   build_dmg:
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: build_and_test
     runs-on: macos-26
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: true
 
       - name: Cache build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             .build
@@ -79,7 +79,7 @@ jobs:
           restore-keys: ${{ runner.os }}-swift-
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: "26.1"
 
@@ -91,13 +91,56 @@ jobs:
         env:
           CLANG_MODULE_CACHE_PATH: ${{ env.CLANG_MODULE_CACHE_PATH }}
 
-      - name: Package dmg
-        run: ./scripts/package-dmg.sh -c release -n LuxaforPresence
+      - name: Import Developer ID certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          BUILD_CERTIFICATE_PASSWORD: ${{ secrets.BUILD_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          : "${BUILD_CERTIFICATE_BASE64:?Missing BUILD_CERTIFICATE_BASE64 secret}"
+          : "${BUILD_CERTIFICATE_PASSWORD:?Missing BUILD_CERTIFICATE_PASSWORD secret}"
+          : "${KEYCHAIN_PASSWORD:?Missing KEYCHAIN_PASSWORD secret}"
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/release-signing.keychain-db"
+          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$BUILD_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          echo "RELEASE_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure notarization credentials
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+        run: |
+          : "${NOTARY_APPLE_ID:?Missing NOTARY_APPLE_ID secret}"
+          : "${NOTARY_TEAM_ID:?Missing NOTARY_TEAM_ID secret}"
+          : "${NOTARY_APP_PASSWORD:?Missing NOTARY_APP_PASSWORD secret}"
+          xcrun notarytool store-credentials LuxaforPresence-CI \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --team-id "$NOTARY_TEAM_ID" \
+            --password "$NOTARY_APP_PASSWORD"
+
+      - name: Sign, notarize, and package dmg
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          NOTARY_PROFILE: LuxaforPresence-CI
+        run: ./scripts/release-dmg.sh -c release -n LuxaforPresence
+
+      - name: Clean up signing keychain
+        if: always()
+        run: |
+          if [[ -n "${RELEASE_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$RELEASE_KEYCHAIN_PATH" || true
+          fi
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: LuxaforPresence-${{ github.ref_name }}
-          path: |
-            dist/LuxaforPresence.app
-            dist/LuxaforPresence.dmg
+          path: dist/LuxaforPresence.dmg

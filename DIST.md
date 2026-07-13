@@ -1,43 +1,15 @@
 # Shipping LuxaforPresence
 
-This guide covers code signing, notarizing, and validating the `.app` / `.dmg` produced by `scripts/package-dmg.sh`.
+Release artifacts must be Developer ID-signed, hardened, notarized, stapled, and verified. Do not publish the unsigned output from `package-dmg.sh`.
 
-## Prerequisites
-- Apple Developer Program membership with a **Developer ID Application** certificate installed in your login keychain.
-- Apple ID credentials (or an App-Specific Password) for notarization.
-- Xcode Command Line Tools (`xcode-select --install`) to get `codesign`, `notarytool`, and `stapler`.
-- `scripts/package-dmg.sh` already run once (creates `dist/LuxaforPresence.app` and `dist/LuxaforPresence.dmg`).
+## Local trusted release
 
-## 1. Build the Release Artifacts
-```bash
-./scripts/package-dmg.sh -c release
-```
-This regenerates `dist/LuxaforPresence.app` and `dist/LuxaforPresence.dmg`.
+Prerequisites:
 
-## 2. Code Sign the App Bundle
-```bash
-codesign \
-  --deep --force --options runtime \
-  --sign "Developer ID Application: YOUR NAME (TEAMID)" \
-  dist/LuxaforPresence.app
-```
-- `--deep` walks the bundle so the embedded resource bundle and binary are also signed.
-- `--options runtime` opts into the hardened runtime (required for notarization).
+- Full Xcode with `codesign`, `notarytool`, and `stapler`.
+- A `Developer ID Application` certificate in the active keychain.
+- A notarytool profile created once with:
 
-Verify the signature:
-```bash
-codesign --verify --deep --strict --verbose=2 dist/LuxaforPresence.app
-```
-
-## 3. Rebuild / Resign the DMG
-If you signed after running the packaging script, recreate the DMG so it contains the signed app:
-```bash
-./scripts/package-dmg.sh -c release
-```
-Alternatively, manually remove and recreate `dist/LuxaforPresence.dmg` (copying in the newly signed `.app`).
-
-## 4. Submit for Notarization
-First store credentials once (creates a secure profile):
 ```bash
 xcrun notarytool store-credentials LuxaforPresenceNotary \
   --apple-id "appleid@example.com" \
@@ -45,29 +17,36 @@ xcrun notarytool store-credentials LuxaforPresenceNotary \
   --password "app-specific-password"
 ```
 
-Submit the DMG:
-```bash
-xcrun notarytool submit dist/LuxaforPresence.dmg \
-  --keychain-profile LuxaforPresenceNotary \
-  --wait
-```
-`--wait` keeps the command running until Apple completes the review; remove it if you prefer polling via `xcrun notarytool log`.
+Create the release with:
 
-## 5. Staple the Ticket
-Once notarization succeeds, embed the ticket so end users can verify offline:
 ```bash
-xcrun stapler staple dist/LuxaforPresence.dmg
+DEVELOPER_ID_APPLICATION="Developer ID Application: YOUR NAME (TEAMID)" \
+NOTARY_PROFILE="LuxaforPresenceNotary" \
+./scripts/release-dmg.sh -c release -n LuxaforPresence
 ```
-You can also staple the `.app` itself (`xcrun stapler staple dist/LuxaforPresence.app`) if you distribute the bundle directly.
 
-## 6. Final Verification
-Mount or assess the DMG locally to confirm macOS trusts it:
-```bash
-spctl --assess --type open --verbose dist/LuxaforPresence.dmg
-```
-Then double-click the DMG, drag `LuxaforPresence.app` to `/Applications`, and launch it; there should be no Gatekeeper warnings.
+The script performs the steps in the required order:
 
-## Tips
-- Keep the `Developer ID` certificate up to date; expired certs cause signing failures.
-- Automate the signing/notarization flow in CI by exporting the certificate to a password-protected `.p12` and importing it at build time.
-- If notarization fails, fetch the JSON log via `xcrun notarytool log <request-id>`; it lists missing entitlements, unsigned binaries, or hardened runtime violations.
+1. Build and assemble the app once.
+2. Sign the app with hardened runtime and the required media entitlements.
+3. Verify and notarize the app, then staple its ticket.
+4. Create and sign the DMG from the stapled app.
+5. Notarize and staple the DMG.
+6. Validate both artifacts with `codesign`, `stapler`, and `spctl`.
+
+Do not rerun `package-dmg.sh` after signing; it reconstructs the app and intentionally produces an unsigned development artifact.
+
+## GitHub Actions secrets
+
+Tag builds run tests first and then require these repository secrets:
+
+- `BUILD_CERTIFICATE_BASE64`: base64-encoded Developer ID `.p12`.
+- `BUILD_CERTIFICATE_PASSWORD`: password protecting the `.p12`.
+- `KEYCHAIN_PASSWORD`: strong temporary CI keychain password.
+- `DEVELOPER_ID_APPLICATION`: full certificate identity, including team ID.
+- `NOTARY_APPLE_ID`: Apple ID used for notarization.
+- `NOTARY_TEAM_ID`: Apple Developer team ID.
+- `NOTARY_APP_PASSWORD`: app-specific password for notarization.
+
+If any signing or notarization input is absent, the release job fails instead of uploading an untrusted artifact.
+The workflow uploads only the notarized DMG; publishing the `.app` directory directly would not preserve executable permissions.

@@ -13,7 +13,7 @@ let package = Package(
         .executableTarget(
             name: "LuxaforPresence",
             path: "LuxaforPresence",
-            exclude: ["Tests", "Info.plist"],
+            exclude: ["Tests", "Info.plist", "LuxaforPresence.entitlements"],
             resources: [
                 .process("Resources")
             ],

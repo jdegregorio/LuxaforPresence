@@ -29,6 +29,16 @@ if [[ $# -ne 0 ]]; then
     usage
 fi
 
+if [[ "${CONFIGURATION}" != "debug" && "${CONFIGURATION}" != "release" ]]; then
+    echo "Configuration must be debug or release." >&2
+    exit 1
+fi
+
+if [[ ! "${DMG_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._\ -]*$ ]]; then
+    echo "Volume name contains unsupported characters." >&2
+    exit 1
+fi
+
 if ! command -v swift >/dev/null 2>&1; then
     echo "swift command not found; install Xcode or the CLT." >&2
     exit 1
