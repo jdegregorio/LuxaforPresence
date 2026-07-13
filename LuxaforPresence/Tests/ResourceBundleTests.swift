@@ -78,6 +78,8 @@ final class ResourceBundleTests: XCTestCase {
         XCTAssertEqual(config.enabledMeetingDetectors, Set(["Zoom"]))
         XCTAssertEqual(config.recentVoiceBlinkSeconds, 300)
         XCTAssertEqual(config.voiceCooldownSeconds, 300)
+        XCTAssertEqual(config.blinkIntervalMilliseconds, 750)
+        XCTAssertEqual(config.blinkInterval, 0.75)
     }
 
     func test_appResourceBundle_containsConfigAndStatusIcons() {

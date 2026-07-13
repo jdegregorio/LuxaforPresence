@@ -7,7 +7,7 @@ final class LuxaforClientTests: XCTestCase {
         super.tearDown()
     }
 
-    func test_turnOnRed_sendsExpectedRemotePayload() throws {
+    func test_setSolidRed_sendsExpectedRemotePayload() throws {
         let requestReceived = expectation(description: "red request received")
         TestURLProtocol.handler = { request, protocolInstance in
             XCTAssertEqual(request.url?.absoluteString, "https://api.luxafor.com/webhook/v1/actions/solid_color")
@@ -25,12 +25,12 @@ final class LuxaforClientTests: XCTestCase {
         }
 
         let client = LuxaforClient(session: makeSession())
-        client.turnOnRed(userId: "test-user")
+        client.setSolidColor(.red, userId: "test-user", force: false)
 
         wait(for: [requestReceived], timeout: 2)
     }
 
-    func test_turnOff_sendsExpectedRemotePayload() throws {
+    func test_setSolidOff_sendsExpectedRemotePayload() throws {
         let requestReceived = expectation(description: "off request received")
         TestURLProtocol.handler = { request, protocolInstance in
             let payload = try XCTUnwrap(Self.jsonBody(from: request))
@@ -43,7 +43,7 @@ final class LuxaforClientTests: XCTestCase {
         }
 
         let client = LuxaforClient(session: makeSession())
-        client.turnOff(userId: "test-user")
+        client.setSolidColor(.off, userId: "test-user", force: false)
 
         wait(for: [requestReceived], timeout: 2)
     }
@@ -67,7 +67,7 @@ final class LuxaforClientTests: XCTestCase {
         }
 
         let client = LuxaforClient(session: makeSession())
-        client.turnOnRed(userId: "test-user")
+        client.setSolidColor(.red, userId: "test-user", force: false)
 
         wait(for: [requestConfirmed], timeout: 2)
         lock.lock()
@@ -97,9 +97,9 @@ final class LuxaforClientTests: XCTestCase {
         }
 
         let client = LuxaforClient(session: makeSession())
-        client.turnOff(userId: "test-user")
+        client.setSolidColor(.off, userId: "test-user", force: false)
         wait(for: [firstRequestConfirmed], timeout: 2)
-        client.turnOff(userId: "test-user")
+        client.setSolidColor(.off, userId: "test-user", force: false)
 
         wait(for: [duplicateRequest], timeout: 0.5)
         lock.lock()
@@ -124,8 +124,8 @@ final class LuxaforClientTests: XCTestCase {
         }
 
         let client = LuxaforClient(session: makeSession())
-        client.turnOnRed(userId: "first-user")
-        client.turnOnRed(userId: "second-user")
+        client.setSolidColor(.red, userId: "first-user", force: false)
+        client.setSolidColor(.red, userId: "second-user", force: false)
 
         wait(for: [requestsReceived], timeout: 2)
         lock.lock()
@@ -170,9 +170,9 @@ final class LuxaforClientTests: XCTestCase {
         }
 
         let client = LuxaforClient(session: makeSession())
-        client.turnOnRed(userId: "test-user")
+        client.setSolidColor(.red, userId: "test-user", force: false)
         wait(for: [redStarted], timeout: 2)
-        client.turnOff(userId: "test-user")
+        client.setSolidColor(.off, userId: "test-user", force: false)
         releaseRed.signal()
         wait(for: [offConfirmed], timeout: 2)
 
@@ -189,7 +189,7 @@ final class LuxaforClientTests: XCTestCase {
             XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:5383/luxafor/v1/color")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
             let payload = try XCTUnwrap(Self.jsonBody(from: request))
-            XCTAssertEqual(payload["color"] as? String, "#FF7000")
+            XCTAssertEqual(payload["color"] as? String, "#FFFF00")
             protocolInstance.respond(statusCode: 200)
             requestReceived.fulfill()
         }
@@ -199,9 +199,125 @@ final class LuxaforClientTests: XCTestCase {
             token: "test-token",
             session: makeSession()
         )
-        client.turnOnYellow(userId: "ignored")
+        client.setSolidColor(.yellow, userId: "ignored", force: false)
 
         wait(for: [requestReceived], timeout: 2)
+    }
+
+    func test_setSolidYellow_usesTrueYellowRemotePayload() throws {
+        let requestReceived = expectation(description: "yellow request received")
+        TestURLProtocol.handler = { request, protocolInstance in
+            let fields = try XCTUnwrap(Self.actionFields(from: request))
+            XCTAssertEqual(fields["color"] as? String, "custom")
+            XCTAssertEqual(fields["custom_color"] as? String, "FFFF00")
+            protocolInstance.respond(statusCode: 200)
+            requestReceived.fulfill()
+        }
+
+        let client = LuxaforClient(session: makeSession())
+        client.setSolidColor(.yellow, userId: "test-user", force: false)
+
+        wait(for: [requestReceived], timeout: 2)
+    }
+
+    func test_setSolidCustomColor_preservesExactRGBPayloads() throws {
+        let requestsReceived = expectation(description: "custom requests received")
+        requestsReceived.expectedFulfillmentCount = 2
+        let lock = NSLock()
+        var payloadColors: [String] = []
+        TestURLProtocol.handler = { request, protocolInstance in
+            let color: String
+            if request.url?.host == "api.luxafor.com" {
+                color = try XCTUnwrap(Self.actionFields(from: request)?["custom_color"] as? String)
+            } else {
+                color = try XCTUnwrap(Self.jsonBody(from: request)?["color"] as? String)
+            }
+            lock.lock()
+            payloadColors.append(color)
+            lock.unlock()
+            protocolInstance.respond(statusCode: 200)
+            requestsReceived.fulfill()
+        }
+
+        let color = LuxaforColor(red: 1, green: 35, blue: 255)
+        let remoteClient = LuxaforClient(session: makeSession())
+        let localClient = try LuxaforLocalWebhookClient(
+            baseURL: "http://127.0.0.1:5383",
+            token: "test-token",
+            session: makeSession()
+        )
+        remoteClient.setSolidColor(color, userId: "test-user", force: false)
+        localClient.setSolidColor(color, userId: "ignored", force: false)
+
+        wait(for: [requestsReceived], timeout: 2)
+        lock.lock()
+        let finalColors = payloadColors
+        lock.unlock()
+        XCTAssertEqual(Set(finalColors), Set(["0123FF", "#0123FF"]))
+    }
+
+    func test_forcedConfirmedDuplicate_isSentAgain() {
+        let requestsReceived = expectation(description: "initial and forced requests received")
+        requestsReceived.expectedFulfillmentCount = 2
+        let firstRequestReceived = expectation(description: "first request received")
+        let lock = NSLock()
+        var requestCount = 0
+        TestURLProtocol.handler = { _, protocolInstance in
+            lock.lock()
+            requestCount += 1
+            let currentCount = requestCount
+            lock.unlock()
+            protocolInstance.respond(statusCode: 200)
+            if currentCount == 1 {
+                firstRequestReceived.fulfill()
+            }
+            requestsReceived.fulfill()
+        }
+
+        let client = LuxaforClient(session: makeSession())
+        client.setSolidColor(.red, userId: "test-user", force: false)
+        wait(for: [firstRequestReceived], timeout: 2)
+        client.setSolidColor(.red, userId: "test-user", force: true)
+
+        wait(for: [requestsReceived], timeout: 2)
+        lock.lock()
+        let finalCount = requestCount
+        lock.unlock()
+        XCTAssertEqual(finalCount, 2)
+    }
+
+    func test_forcedInFlightDuplicate_isQueuedAsLatestReassertion() {
+        let firstRequestStarted = expectation(description: "first request started")
+        let secondRequestConfirmed = expectation(description: "forced request confirmed")
+        let releaseFirstRequest = DispatchSemaphore(value: 0)
+        let lock = NSLock()
+        var requestCount = 0
+        TestURLProtocol.handler = { _, protocolInstance in
+            lock.lock()
+            requestCount += 1
+            let currentCount = requestCount
+            lock.unlock()
+            if currentCount == 1 {
+                firstRequestStarted.fulfill()
+                _ = releaseFirstRequest.wait(timeout: .now() + 2)
+            }
+            protocolInstance.respond(statusCode: 200)
+            if currentCount == 2 {
+                secondRequestConfirmed.fulfill()
+            }
+        }
+
+        let client = LuxaforClient(session: makeSession())
+        client.setSolidColor(.off, userId: "test-user", force: false)
+        wait(for: [firstRequestStarted], timeout: 2)
+        client.setSolidColor(.off, userId: "test-user", force: true)
+        releaseFirstRequest.signal()
+
+        wait(for: [secondRequestConfirmed], timeout: 2)
+        lock.lock()
+        let finalCount = requestCount
+        lock.unlock()
+        XCTAssertEqual(finalCount, 2)
     }
 
     private func makeSession() -> URLSession {

@@ -11,6 +11,8 @@ final class PresenceEngineTests: XCTestCase {
 
         XCTAssertEqual(harness.states, [.zoomQuiet])
         XCTAssertEqual(harness.luxafor.actions, [.yellow(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.outputs, [.solid(.yellow)])
+        XCTAssertEqual(engine.desiredOutput, .solid(.yellow))
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .zoomQuiet)
     }
 
@@ -23,6 +25,7 @@ final class PresenceEngineTests: XCTestCase {
 
         XCTAssertEqual(harness.states, [.available])
         XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.outputs, [.off])
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .noCommunicationContext)
     }
 
@@ -49,6 +52,8 @@ final class PresenceEngineTests: XCTestCase {
 
         XCTAssertEqual(harness.states, [.voiceRecent])
         XCTAssertEqual(harness.luxafor.actions, [.red(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.outputs, [.blink(color: .red, interval: 0.75)])
+        XCTAssertEqual(harness.outputTimer.scheduledIntervals, [0.75])
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .recentVoice)
     }
 
@@ -98,6 +103,7 @@ final class PresenceEngineTests: XCTestCase {
         tickAndWait(engine)
 
         XCTAssertEqual(harness.states, [.voiceCooldown])
+        XCTAssertEqual(harness.outputs, [.solid(.red)])
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .voiceCooldown)
     }
 
@@ -254,7 +260,11 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.states, [.voiceCooldown, .voiceRecent])
         XCTAssertEqual(
             harness.luxafor.actions,
-            [.red(harness.config.remoteWebhookUserId), .red(harness.config.remoteWebhookUserId)]
+            [.red(harness.config.remoteWebhookUserId)]
+        )
+        XCTAssertEqual(
+            harness.outputs,
+            [.solid(.red), .blink(color: .red, interval: 0.75)]
         )
     }
 
@@ -457,6 +467,122 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertFalse(detector.wasCalledOnMainThread)
     }
 
+    func test_reassertOutput_forcesConfirmedPhysicalPhase() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        engine.reassertOutput()
+
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [
+                .yellow(harness.config.remoteWebhookUserId),
+                .forced(.yellow, harness.config.remoteWebhookUserId),
+            ]
+        )
+        XCTAssertEqual(harness.outputs, [.solid(.yellow)])
+    }
+
+    func test_sleepWake_reevaluatesBeforeRestartingAndReassertingOutput() {
+        let harness = PresenceEngineHarness { config in
+            config.recentVoiceBlinkSeconds = 5
+            config.voiceCooldownSeconds = 5
+        }
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        let staleBlinkHandler = harness.outputTimer.handler
+        harness.outputTimer.fire()
+        engine.suspendOutput()
+        staleBlinkHandler?()
+
+        harness.currentDate = harness.currentDate.addingTimeInterval(6)
+        harness.micCam.microphoneActive = false
+        let wakeCompleted = expectation(description: "wake reevaluation completed")
+        engine.resumeOutput { wakeCompleted.fulfill() }
+        wait(for: [wakeCompleted], timeout: 2)
+
+        XCTAssertEqual(harness.states, [.voiceRecent, .voiceCooldown])
+        XCTAssertEqual(engine.desiredOutput, .solid(.red))
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [
+                .red(harness.config.remoteWebhookUserId),
+                .off(harness.config.remoteWebhookUserId),
+                .forced(.red, harness.config.remoteWebhookUserId),
+            ]
+        )
+        XCTAssertGreaterThanOrEqual(harness.outputTimer.cancelCount, 3)
+    }
+
+    func test_wakeDuringPreSleepPoll_waitsForDistinctFreshEvaluationBeforeReasserting() {
+        let harness = PresenceEngineHarness()
+        let detector = OneShotBlockingMeetingDetector(initialResult: true)
+        let engine = harness.makeEngine(meetingDetector: detector)
+
+        tickAndWait(engine)
+        detector.blockNextCall()
+        let stalePollCompleted = expectation(description: "stale pre-sleep poll completed")
+        engine.tick { stalePollCompleted.fulfill() }
+        XCTAssertEqual(detector.waitUntilBlocked(), .success)
+
+        engine.suspendOutput()
+        detector.result = false
+        let wakeCompleted = expectation(description: "fresh wake evaluation completed")
+        engine.resumeOutput { wakeCompleted.fulfill() }
+        detector.resumeBlockedCall()
+
+        wait(for: [stalePollCompleted, wakeCompleted], timeout: 2)
+        XCTAssertEqual(detector.callCount, 3)
+        XCTAssertEqual(harness.states, [.zoomQuiet, .available])
+        XCTAssertEqual(engine.desiredOutput, .off)
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [
+                .yellow(harness.config.remoteWebhookUserId),
+                .forced(.off, harness.config.remoteWebhookUserId),
+            ]
+        )
+    }
+
+    func test_clearForceDuringWakePoll_waitsForFinalAutomaticEvaluationBeforeReasserting() {
+        let harness = PresenceEngineHarness()
+        let detector = OneShotBlockingMeetingDetector(initialResult: true)
+        let engine = harness.makeEngine(meetingDetector: detector)
+
+        tickAndWait(engine)
+        engine.suspendOutput()
+        detector.blockNextCall()
+        let wakeCompleted = expectation(description: "wake reevaluation completed")
+        engine.resumeOutput { wakeCompleted.fulfill() }
+        XCTAssertEqual(detector.waitUntilBlocked(), .success)
+
+        engine.force(.voiceCooldown)
+        engine.clearForce()
+        detector.result = false
+        detector.resumeBlockedCall()
+
+        wait(for: [wakeCompleted], timeout: 2)
+        XCTAssertEqual(detector.callCount, 3)
+        XCTAssertEqual(
+            harness.states,
+            [.zoomQuiet, .voiceCooldown, .zoomQuiet, .available]
+        )
+        XCTAssertEqual(engine.desiredOutput, .off)
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [
+                .yellow(harness.config.remoteWebhookUserId),
+                .forced(.off, harness.config.remoteWebhookUserId),
+            ]
+        )
+    }
+
     private func tickAndWait(
         _ engine: PresenceEngine,
         file: StaticString = #filePath,
@@ -478,9 +604,11 @@ private final class PresenceEngineHarness {
     let meetingDetector = FakeMeetingDetector()
     let voiceActivity = FakeVoiceActivitySignal()
     let luxafor = FakeLuxaforClient()
+    let outputTimer = FakeLightOutputTimer()
     var currentDate = Date(timeIntervalSinceReferenceDate: 1_000_000)
     var states: [PresenceState] = []
     var snapshots: [PresenceSnapshot] = []
+    var outputs: [LightOutput] = []
 
     init(configure: (inout PresenceEngine.Config) -> Void = { _ in }) {
         var config = PresenceEngine.Config(values: [:])
@@ -497,6 +625,7 @@ private final class PresenceEngineHarness {
             meetingDetector: meetingDetector ?? self.meetingDetector,
             voiceActivity: voiceActivity,
             luxafor: luxafor,
+            outputTimer: outputTimer,
             now: { [unowned self] in currentDate }
         )
         engine.onStateChange = { [weak self] state in
@@ -504,6 +633,9 @@ private final class PresenceEngineHarness {
         }
         engine.onSnapshot = { [weak self] snapshot in
             self?.snapshots.append(snapshot)
+        }
+        engine.onOutputChange = { [weak self] output in
+            self?.outputs.append(output)
         }
         return engine
     }
@@ -607,6 +739,69 @@ private final class BlockingMeetingDetector: MeetingDetectorProtocol {
     }
 }
 
+private final class OneShotBlockingMeetingDetector: MeetingDetectorProtocol {
+    var name: String { "One-shot Blocking Zoom" }
+
+    private let lock = NSLock()
+    private let blocked = DispatchSemaphore(value: 0)
+    private let resumeSignal = DispatchSemaphore(value: 0)
+    private var shouldBlockNextCall = false
+    private var calls = 0
+    private var storedResult: Bool
+
+    init(initialResult: Bool) {
+        storedResult = initialResult
+    }
+
+    var result: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedResult
+        }
+        set {
+            lock.lock()
+            storedResult = newValue
+            lock.unlock()
+        }
+    }
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    func blockNextCall() {
+        lock.lock()
+        shouldBlockNextCall = true
+        lock.unlock()
+    }
+
+    func isMeetingActive() -> Bool {
+        lock.lock()
+        calls += 1
+        let capturedResult = storedResult
+        let shouldBlock = shouldBlockNextCall
+        shouldBlockNextCall = false
+        lock.unlock()
+
+        if shouldBlock {
+            blocked.signal()
+            _ = resumeSignal.wait(timeout: .now() + 2)
+        }
+        return capturedResult
+    }
+
+    func waitUntilBlocked() -> DispatchTimeoutResult {
+        blocked.wait(timeout: .now() + 1)
+    }
+
+    func resumeBlockedCall() {
+        resumeSignal.signal()
+    }
+}
+
 private final class ThreadRecordingMeetingDetector: MeetingDetectorProtocol {
     var name: String { "Thread Recording Zoom" }
     private(set) var wasCalledOnMainThread = true
@@ -622,20 +817,44 @@ private final class FakeLuxaforClient: LuxaforClientProtocol {
         case red(String)
         case yellow(String)
         case off(String)
+        case forced(LuxaforColor, String)
+        case custom(LuxaforColor, String)
     }
 
     private(set) var actions: [Action] = []
 
-    func turnOnRed(userId: String) {
-        actions.append(.red(userId))
+    func setSolidColor(_ color: LuxaforColor, userId: String, force: Bool) {
+        if force {
+            actions.append(.forced(color, userId))
+        } else if color == .red {
+            actions.append(.red(userId))
+        } else if color == .yellow {
+            actions.append(.yellow(userId))
+        } else if color == .off {
+            actions.append(.off(userId))
+        } else {
+            actions.append(.custom(color, userId))
+        }
+    }
+}
+
+private final class FakeLightOutputTimer: LightOutputTimerProtocol {
+    private(set) var scheduledIntervals: [TimeInterval] = []
+    private(set) var cancelCount = 0
+    private(set) var handler: (() -> Void)?
+
+    func schedule(every interval: TimeInterval, handler: @escaping () -> Void) {
+        scheduledIntervals.append(interval)
+        self.handler = handler
     }
 
-    func turnOnYellow(userId: String) {
-        actions.append(.yellow(userId))
+    func cancel() {
+        cancelCount += 1
+        handler = nil
     }
 
-    func turnOff(userId: String) {
-        actions.append(.off(userId))
+    func fire() {
+        handler?()
     }
 }
 

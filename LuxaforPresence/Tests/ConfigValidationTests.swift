@@ -8,6 +8,7 @@ final class ConfigValidationTests: XCTestCase {
             "vadThreshold": 1.01,
             "recentVoiceBlinkSeconds": -1,
             "voiceCooldownSeconds": -1,
+            "blinkIntervalMilliseconds": 0,
         ])
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.defaultPollInterval)
@@ -19,6 +20,10 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(
             config.voiceCooldownSeconds,
             PresenceEngine.Config.defaultVoiceCooldownSeconds
+        )
+        XCTAssertEqual(
+            config.blinkIntervalMilliseconds,
+            PresenceEngine.Config.defaultBlinkIntervalMilliseconds
         )
     }
 
@@ -28,12 +33,18 @@ final class ConfigValidationTests: XCTestCase {
             "vadThreshold": 1.0,
             "recentVoiceBlinkSeconds": 0.0,
             "voiceCooldownSeconds": 0.0,
+            "blinkIntervalMilliseconds": PresenceEngine.Config.minimumBlinkIntervalMilliseconds,
         ])
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.minimumPollInterval)
         XCTAssertEqual(config.vadThreshold, 1.0)
         XCTAssertEqual(config.recentVoiceBlinkSeconds, 0.0)
         XCTAssertEqual(config.voiceCooldownSeconds, 0.0)
+        XCTAssertEqual(
+            config.blinkIntervalMilliseconds,
+            PresenceEngine.Config.minimumBlinkIntervalMilliseconds
+        )
+        XCTAssertEqual(config.blinkInterval, 0.1)
     }
 
     func test_init_rejectsBooleanValuesForNumericKeys() {
@@ -42,6 +53,7 @@ final class ConfigValidationTests: XCTestCase {
             "vadThreshold": false,
             "recentVoiceBlinkSeconds": true,
             "voiceCooldownSeconds": false,
+            "blinkIntervalMilliseconds": true,
         ])
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.defaultPollInterval)
@@ -53,6 +65,10 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(
             config.voiceCooldownSeconds,
             PresenceEngine.Config.defaultVoiceCooldownSeconds
+        )
+        XCTAssertEqual(
+            config.blinkIntervalMilliseconds,
+            PresenceEngine.Config.defaultBlinkIntervalMilliseconds
         )
     }
 
@@ -62,6 +78,7 @@ final class ConfigValidationTests: XCTestCase {
             "vadThreshold": Double.nan,
             "recentVoiceBlinkSeconds": Double.infinity,
             "voiceCooldownSeconds": Double.nan,
+            "blinkIntervalMilliseconds": Double.infinity,
         ])
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.defaultPollInterval)
@@ -73,6 +90,10 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(
             config.voiceCooldownSeconds,
             PresenceEngine.Config.defaultVoiceCooldownSeconds
+        )
+        XCTAssertEqual(
+            config.blinkIntervalMilliseconds,
+            PresenceEngine.Config.defaultBlinkIntervalMilliseconds
         )
     }
 
@@ -84,6 +105,27 @@ final class ConfigValidationTests: XCTestCase {
 
         XCTAssertEqual(config.recentVoiceBlinkSeconds, 5.5)
         XCTAssertEqual(config.voiceCooldownSeconds, 10.25)
+    }
+
+    func test_init_acceptsConfiguredBlinkInterval() {
+        let config = PresenceEngine.Config(values: [
+            "blinkIntervalMilliseconds": 250,
+        ])
+
+        XCTAssertEqual(config.blinkIntervalMilliseconds, 250)
+        XCTAssertEqual(config.blinkInterval, 0.25)
+    }
+
+    func test_init_rejectsBlinkIntervalBelowSafeMinimum() {
+        let config = PresenceEngine.Config(values: [
+            "blinkIntervalMilliseconds": 99,
+        ])
+
+        XCTAssertEqual(
+            config.blinkIntervalMilliseconds,
+            PresenceEngine.Config.defaultBlinkIntervalMilliseconds
+        )
+        XCTAssertEqual(config.blinkInterval, 0.75)
     }
 
     func test_init_filtersLegacyMeetingDetectorListToZoom() {
