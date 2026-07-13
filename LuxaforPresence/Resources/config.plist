@@ -38,5 +38,7 @@
     <real>300</real>
     <key>voiceCooldownSeconds</key>
     <real>300</real>
+    <key>blinkIntervalMilliseconds</key>
+    <integer>750</integer>
 </dict>
 </plist>

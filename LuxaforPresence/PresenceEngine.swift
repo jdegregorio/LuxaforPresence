@@ -13,6 +13,8 @@ final class PresenceEngine {
         static let defaultVadThreshold = 0.02
         static let defaultRecentVoiceBlinkSeconds: TimeInterval = 300
         static let defaultVoiceCooldownSeconds: TimeInterval = 300
+        static let defaultBlinkIntervalMilliseconds: TimeInterval = 750
+        static let minimumBlinkIntervalMilliseconds: TimeInterval = 100
         static let supportedMeetingDetectorNames: Set<String> = ["Zoom"]
 
         var transportMode: TransportMode = .local
@@ -36,6 +38,7 @@ final class PresenceEngine {
         var vadThreshold = defaultVadThreshold
         var recentVoiceBlinkSeconds = defaultRecentVoiceBlinkSeconds
         var voiceCooldownSeconds = defaultVoiceCooldownSeconds
+        var blinkIntervalMilliseconds = defaultBlinkIntervalMilliseconds
         private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "Config")
 
         init(
@@ -153,6 +156,15 @@ final class PresenceEngine {
                     logger.error("Invalid voiceCooldownSeconds; expected a finite non-negative value. Using \(Self.defaultVoiceCooldownSeconds, privacy: .public) seconds.")
                 }
             }
+            if let value = values["blinkIntervalMilliseconds"] {
+                if let interval = Self.number(from: value),
+                   interval.isFinite,
+                   interval >= Self.minimumBlinkIntervalMilliseconds {
+                    blinkIntervalMilliseconds = interval
+                } else {
+                    logger.error("Invalid blinkIntervalMilliseconds; expected a finite value of at least \(Self.minimumBlinkIntervalMilliseconds, privacy: .public). Using \(Self.defaultBlinkIntervalMilliseconds, privacy: .public) milliseconds.")
+                }
+            }
         }
 
         private mutating func validateSelectedTransport() {
@@ -198,7 +210,12 @@ final class PresenceEngine {
             let finalizedVadThreshold = vadThreshold
             let finalizedRecentVoiceBlinkSeconds = recentVoiceBlinkSeconds
             let finalizedVoiceCooldownSeconds = voiceCooldownSeconds
-            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, meeting bundles count \(finalizedBundleCount, privacy: .public), useCalendar \(finalizedUseCalendar, privacy: .public), debugAssumeFrontmostImpliesMic \(finalizedDebugFlag), Zoom-only meeting detectors count \(finalizedMeetingDetectorCount, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), recentVoiceBlinkSeconds \(finalizedRecentVoiceBlinkSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public)")
+            let finalizedBlinkIntervalMilliseconds = blinkIntervalMilliseconds
+            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, meeting bundles count \(finalizedBundleCount, privacy: .public), useCalendar \(finalizedUseCalendar, privacy: .public), debugAssumeFrontmostImpliesMic \(finalizedDebugFlag), Zoom-only meeting detectors count \(finalizedMeetingDetectorCount, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), recentVoiceBlinkSeconds \(finalizedRecentVoiceBlinkSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public), blinkIntervalMilliseconds \(finalizedBlinkIntervalMilliseconds, privacy: .public)")
+        }
+
+        var blinkInterval: TimeInterval {
+            blinkIntervalMilliseconds / 1_000
         }
 
         func makeLuxaforClient() -> LuxaforClientProtocol {
@@ -222,13 +239,22 @@ final class PresenceEngine {
     let config: Config
     var onStateChange: ((PresenceState) -> Void)?
     var onSnapshot: ((PresenceSnapshot) -> Void)?
+    var onOutputChange: ((LightOutput) -> Void)? {
+        didSet {
+            outputController.onOutputChange = onOutputChange
+        }
+    }
+
+    var desiredOutput: LightOutput? {
+        outputController.desiredOutput
+    }
 
     private let micCam: MicCamSignalProtocol
     private let frontApp: FrontmostAppSignalProtocol
     private let calendar: CalendarSignalProtocol
     private let meetingDetector: MeetingDetectorProtocol
     private let voiceActivity: VoiceActivitySignalProtocol
-    private let luxafor: LuxaforClientProtocol
+    private let outputController: LightOutputController
     private let now: () -> Date
     private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "PresenceEngine")
     private let pollQueue = DispatchQueue(
@@ -240,6 +266,7 @@ final class PresenceEngine {
     private var pollInFlight = false
     private var pollCompletions: [() -> Void] = []
     private var automaticReevaluationPending = false
+    private var automaticReevaluationCompletions: [() -> Void] = []
     private var communicationContextWasActive = false
     private var lastObservedVoiceActivityDate: Date?
     private var sessionVoiceActivityDate: Date?
@@ -255,6 +282,7 @@ final class PresenceEngine {
         meetingDetector: MeetingDetectorProtocol? = nil,
         voiceActivity: VoiceActivitySignalProtocol? = nil,
         luxafor: LuxaforClientProtocol? = nil,
+        outputTimer: LightOutputTimerProtocol? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.config = config
@@ -263,7 +291,11 @@ final class PresenceEngine {
         self.calendar = calendar
         self.meetingDetector = meetingDetector ?? MeetingDetector(enabledNames: config.enabledMeetingDetectors)
         self.voiceActivity = voiceActivity ?? VoiceActivitySignal(threshold: config.vadThreshold)
-        self.luxafor = luxafor ?? config.makeLuxaforClient()
+        self.outputController = LightOutputController(
+            client: luxafor ?? config.makeLuxaforClient(),
+            userId: config.remoteWebhookUserId,
+            timer: outputTimer ?? LightOutputTimer()
+        )
         self.now = now
     }
 
@@ -310,6 +342,38 @@ final class PresenceEngine {
         requestAutomaticReevaluation()
     }
 
+    /// Pauses software animation while the Mac is asleep, retaining the desired
+    /// logical output for the wake reevaluation.
+    func suspendOutput() {
+        deliverOnMain { [weak self] in
+            self?.outputController.suspend()
+        }
+    }
+
+    /// Reevaluates signals while output remains suspended, then reasserts the
+    /// resulting output. This avoids briefly restoring an expired pre-sleep state.
+    func resumeOutput(completion: (() -> Void)? = nil) {
+        deliverOnMain { [weak self] in
+            guard let self else { return }
+            self.requestAutomaticReevaluation { [weak self] in
+                self?.outputController.resume()
+                completion?()
+            }
+        }
+    }
+
+    func reassertOutput() {
+        deliverOnMain { [weak self] in
+            self?.outputController.reassert()
+        }
+    }
+
+    func shutdownOutput() {
+        deliverOnMain { [weak self] in
+            self?.outputController.shutdown()
+        }
+    }
+
     /// Schedules one signal evaluation. If the previous evaluation has not completed, the
     /// new request is coalesced into it rather than allowing polls to overlap or queue up.
     func tick(completion: (() -> Void)? = nil) {
@@ -346,10 +410,16 @@ final class PresenceEngine {
                 self.pollCompletions.removeAll(keepingCapacity: true)
                 let shouldReevaluate = self.automaticReevaluationPending
                 self.automaticReevaluationPending = false
+                let reevaluationCompletions = self.automaticReevaluationCompletions
+                self.automaticReevaluationCompletions.removeAll(keepingCapacity: true)
                 self.pollLock.unlock()
-                completions.forEach { $0() }
                 if shouldReevaluate {
-                    self.tick()
+                    self.tick {
+                        completions.forEach { $0() }
+                        reevaluationCompletions.forEach { $0() }
+                    }
+                } else {
+                    completions.forEach { $0() }
                 }
             }
         }
@@ -477,14 +547,17 @@ final class PresenceEngine {
         }
     }
 
-    private func requestAutomaticReevaluation() {
+    private func requestAutomaticReevaluation(completion: (() -> Void)? = nil) {
         pollLock.lock()
         guard pollInFlight else {
             pollLock.unlock()
-            tick()
+            tick(completion: completion)
             return
         }
         automaticReevaluationPending = true
+        if let completion {
+            automaticReevaluationCompletions.append(completion)
+        }
         pollLock.unlock()
     }
 
@@ -514,17 +587,8 @@ final class PresenceEngine {
         lastState = state
         onStateChange?(state)
         logger.log("Applying state \(state.rawValue, privacy: .public)")
-        switch state {
-        case .available:
-            luxafor.turnOff(userId: config.remoteWebhookUserId)
-        case .zoomQuiet:
-            luxafor.turnOnYellow(userId: config.remoteWebhookUserId)
-        case .voiceRecent, .voiceCooldown:
-            // PR 1 intentionally uses solid red for both voice states. A dedicated
-            // blink controller will present voiceRecent in the next feature slice.
-            luxafor.turnOnRed(userId: config.remoteWebhookUserId)
-        case .unknown:
-            luxafor.turnOff(userId: config.remoteWebhookUserId)
-        }
+        outputController.apply(
+            state.lightOutput(blinkInterval: config.blinkInterval)
+        )
     }
 }

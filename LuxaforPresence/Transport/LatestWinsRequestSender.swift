@@ -30,10 +30,12 @@ final class LatestWinsRequestSender {
     func send(
         identifier: String,
         actionDescription: String,
+        force: Bool = false,
         requestFactory: @escaping RequestFactory
     ) {
         queue.async {
-            if self.desiredRequest?.identifier == identifier,
+            if !force,
+               self.desiredRequest?.identifier == identifier,
                self.inFlightTask != nil || self.retryScheduled || self.confirmedIdentifier == identifier {
                 self.logger.debug("Coalescing duplicate webhook state \(actionDescription, privacy: .public)")
                 return
