@@ -49,3 +49,4 @@ Tag builds run tests first and then require these repository secrets:
 - `NOTARY_APP_PASSWORD`: app-specific password for notarization.
 
 If any signing or notarization input is absent, the release job fails instead of uploading an untrusted artifact.
+The workflow uploads only the notarized DMG; publishing the `.app` directory directly would not preserve executable permissions.
