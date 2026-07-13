@@ -77,7 +77,7 @@ final class LatestWinsRequestSender {
             request = try requestFactory()
         } catch {
             logger.error(
-                "Failed to build webhook request for \(actionDescription, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Failed to build webhook request for \(actionDescription, privacy: .public): \(error.localizedDescription, privacy: .private)"
             )
             return
         }
@@ -143,7 +143,7 @@ final class LatestWinsRequestSender {
         retryScheduled = true
         if let error {
             logger.error(
-                "Webhook state \(actionDescription, privacy: .public) failed: \(error.localizedDescription, privacy: .public); retrying in \(delay, privacy: .public)s"
+                "Webhook state \(actionDescription, privacy: .public) failed: \(error.localizedDescription, privacy: .private); retrying in \(delay, privacy: .public)s"
             )
         } else if let statusCode {
             logger.error(

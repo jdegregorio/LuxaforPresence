@@ -79,6 +79,8 @@ Beta. Should work for Slack and Teams on recent versions of macOS.
     </dict>
     ```
     *   To use the remote webhook, set `transportMode` to `remote` and provide `remoteWebhookUserId`.
+    *   `localWebhookBaseUrl` must be an absolute HTTP(S) URL without embedded credentials, a query, or a fragment. Cleartext HTTP is accepted only for loopback hosts such as `127.0.0.1` and `localhost`; use HTTPS for every other host. A configured base path is preserved when the `/color` endpoint is added.
+    *   Runtime numeric values are validated before use: `pollInterval` must be at least `0.25` seconds, `vadThreshold` must be greater than `0` and at most `1`, and `vadGraceSeconds` must be non-negative. Invalid values are logged and replaced with safe defaults. Remote mode with a blank or sample `remoteWebhookUserId` falls back to local transport.
 
 ## Permissions
 
