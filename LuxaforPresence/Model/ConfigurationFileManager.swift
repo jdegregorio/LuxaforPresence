@@ -26,7 +26,7 @@ struct ConfigurationFileManager {
             in: .userDomainMask
         ).map { $0.appendingPathComponent("LuxaforPresence/config.plist") },
         bundledTemplateURL: @escaping () -> URL? = {
-            Bundle.module.url(forResource: "config", withExtension: "plist")
+            AppResourceBundle.bundle.url(forResource: "config", withExtension: "plist")
         }
     ) {
         self.configurationURL = configurationURL

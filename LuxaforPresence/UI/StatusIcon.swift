@@ -28,7 +28,7 @@ enum StatusIconName {
 
     func image() -> NSImage? {
         guard
-            let url = Bundle.module.url(
+            let url = AppResourceBundle.bundle.url(
                 forResource: asset.fileName,
                 withExtension: "png",
                 subdirectory: asset.directory

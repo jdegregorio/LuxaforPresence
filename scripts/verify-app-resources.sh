@@ -8,7 +8,8 @@ if [[ $# -ne 1 ]]; then
 fi
 
 APP_DIR="$1"
-RESOURCE_BUNDLE="${APP_DIR}/LuxaforPresence_LuxaforPresence.bundle"
+RESOURCE_BUNDLE="${APP_DIR}/Contents/Resources/LuxaforPresence_LuxaforPresence.bundle"
+LEGACY_RESOURCE_BUNDLE="${APP_DIR}/LuxaforPresence_LuxaforPresence.bundle"
 
 if [[ ! -d "${APP_DIR}" ]]; then
     echo "error: app bundle not found at ${APP_DIR}" >&2
@@ -16,7 +17,12 @@ if [[ ! -d "${APP_DIR}" ]]; then
 fi
 
 if [[ ! -d "${RESOURCE_BUNDLE}" ]]; then
-    echo "error: SwiftPM resource bundle is not beside the app's main bundle URL" >&2
+    echo "error: SwiftPM resource bundle is missing from Contents/Resources" >&2
+    exit 1
+fi
+
+if [[ -e "${LEGACY_RESOURCE_BUNDLE}" ]]; then
+    echo "error: resource bundle at the app root is incompatible with code signing" >&2
     exit 1
 fi
 

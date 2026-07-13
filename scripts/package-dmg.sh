@@ -78,10 +78,9 @@ chmod +x "${MACOS_DIR}/${PRODUCT_NAME}"
 
 RESOURCE_BUNDLE_PATH="${BUILD_DIR}/${PRODUCT_NAME}_${PRODUCT_NAME}.bundle"
 if [[ -d "${RESOURCE_BUNDLE_PATH}" ]]; then
-    # SwiftPM's generated Bundle.module accessor looks beside Bundle.main's
-    # bundle URL. For an app bundle, that is the .app root rather than
-    # Contents/Resources.
-    cp -R "${RESOURCE_BUNDLE_PATH}" "${APP_DIR}/"
+    # Keep resources inside the standard signed-bundle layout. AppResourceBundle
+    # selects this copy in packaged apps and falls back to Bundle.module in SwiftPM.
+    cp -R "${RESOURCE_BUNDLE_PATH}" "${RESOURCES_DIR}/"
 else
     echo "error: SwiftPM resource bundle not found; cannot package a runnable app." >&2
     exit 1
