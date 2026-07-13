@@ -2,15 +2,24 @@ import AppKit
 import Foundation
 
 final class GoogleMeetDetector: MeetingDetectorProtocol {
+    private let browserRunning: () -> Bool
+    private let appleScriptExecutor: (String) -> Bool
+
     var name: String { "GoogleMeet" }
 
-    func isMeetingActive() -> Bool {
-        guard isBrowserRunning else { return false }
-        return chromeMeetActive() || safariMeetActive()
+    init(
+        browserRunning: @escaping () -> Bool = {
+            ProcessSignal.isRunning(executableNames: ["Google Chrome", "Safari"])
+        },
+        appleScriptExecutor: @escaping (String) -> Bool = GoogleMeetDetector.executeAppleScript
+    ) {
+        self.browserRunning = browserRunning
+        self.appleScriptExecutor = appleScriptExecutor
     }
 
-    private var isBrowserRunning: Bool {
-        ProcessSignal.isRunning(executableNames: ["Google Chrome", "Safari"])
+    func isMeetingActive() -> Bool {
+        guard browserRunning() else { return false }
+        return chromeMeetActive() || safariMeetActive()
     }
 
     private func chromeMeetActive() -> Bool {
@@ -50,6 +59,15 @@ final class GoogleMeetDetector: MeetingDetectorProtocol {
     }
 
     private func runAppleScriptReturningBool(_ source: String) -> Bool {
+        if Thread.isMainThread {
+            return appleScriptExecutor(source)
+        }
+        return DispatchQueue.main.sync {
+            appleScriptExecutor(source)
+        }
+    }
+
+    private static func executeAppleScript(_ source: String) -> Bool {
         guard let script = NSAppleScript(source: source) else { return false }
         var error: NSDictionary?
         let result = script.executeAndReturnError(&error)

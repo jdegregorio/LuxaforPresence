@@ -2,6 +2,11 @@ import Foundation
 import OSLog
 
 final class PresenceEngine {
+    private enum TickResult {
+        case automatic(PresenceState)
+        case forced(PresenceState)
+    }
+
     struct Config {
         static let defaultPollInterval: TimeInterval = 2.0
         static let minimumPollInterval: TimeInterval = 0.25
@@ -201,6 +206,14 @@ final class PresenceEngine {
     private let luxafor: LuxaforClientProtocol
     private let now: () -> Date
     private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "PresenceEngine")
+    private let pollQueue = DispatchQueue(
+        label: "com.example.LuxaforPresence.signal-polling",
+        qos: .utility
+    )
+    private let pollLock = NSLock()
+    private let stateLock = NSLock()
+    private var pollInFlight = false
+    private var pollCompletions: [() -> Void] = []
     private var lastState: PresenceState = .unknown
     private var forcedState: PresenceState?
 
@@ -246,36 +259,85 @@ final class PresenceEngine {
     }
 
     func force(_ state: PresenceState) {
+        stateLock.lock()
         forcedState = state
+        stateLock.unlock()
         logger.log("Force invoked; new forced state \(state.rawValue, privacy: .public)")
-        apply(state)
+        deliverOnMain { [weak self] in
+            self?.apply(state)
+        }
     }
 
     func clear(_ state: PresenceState) {
+        stateLock.lock()
         forcedState = nil
+        stateLock.unlock()
         logger.log("Force invoked; new forced state \(state.rawValue, privacy: .public)")
-        apply(state)
+        deliverOnMain { [weak self] in
+            self?.apply(state)
+        }
     }
 
-    func tick() {
-        logger.debug("Tick start; forced state \(String(describing: self.forcedState), privacy: .public)")
-        if let s = self.forcedState {
-            logger.debug("Forced state active; bypassing signals")
-            apply(s)
+    /// Schedules one signal evaluation. If the previous evaluation has not completed, the
+    /// new request is coalesced into it rather than allowing polls to overlap or queue up.
+    func tick(completion: (() -> Void)? = nil) {
+        pollLock.lock()
+        if let completion {
+            pollCompletions.append(completion)
+        }
+        guard !pollInFlight else {
+            pollLock.unlock()
+            logger.debug("Tick coalesced; previous signal poll is still in flight")
             return
+        }
+        pollInFlight = true
+        pollLock.unlock()
+
+        pollQueue.async { [weak self] in
+            guard let self else { return }
+            let forcedState = self.currentForcedState()
+            self.logger.debug("Tick start; forced state \(String(describing: forcedState), privacy: .public)")
+            let result: TickResult
+            if let forcedState {
+                self.logger.debug("Forced state active; bypassing signals")
+                result = .forced(forcedState)
+            } else {
+                result = .automatic(self.evaluateSignals())
+            }
+
+            self.deliverOnMain { [weak self] in
+                guard let self else { return }
+                self.finishTick(result)
+                self.pollLock.lock()
+                self.pollInFlight = false
+                let completions = self.pollCompletions
+                self.pollCompletions.removeAll(keepingCapacity: true)
+                self.pollLock.unlock()
+                completions.forEach { $0() }
+            }
+        }
+    }
+
+    private func evaluateSignals() -> PresenceState {
+        let cameraActive = micCam.isCameraInUse()
+        if cameraActive {
+            logger.debug("Camera active; skipping remaining signal reads")
+            logger.debug("Decision path: cameraActive")
+            return .inMeeting
         }
 
         logger.debug("Evaluating meeting detectors")
         let detectorMeetingActive = meetingDetector.isMeetingActive()
         logger.debug("Meeting detector evaluation complete; active=\(detectorMeetingActive)")
-        let frontmostIsMeetingApp = frontApp.isFrontmostIn(allowlist: config.meetingBundles)
+        let frontmostIsMeetingApp = config.debugAssumeFrontmostImpliesMic
+            ? frontApp.isFrontmostIn(allowlist: config.meetingBundles)
+            : false
         let debugForcingMeeting = config.debugAssumeFrontmostImpliesMic && frontmostIsMeetingApp
         if debugForcingMeeting {
             logger.debug("Debug flag forcing meeting active because frontmost app is allowlisted")
         }
         let calendarMeetingActive = config.useCalendar ? calendar.hasOngoingMeetingEvent() : false
         let meetingActive = detectorMeetingActive || calendarMeetingActive || debugForcingMeeting
-        let cameraActive = micCam.isCameraInUse()
         let micActive = micCam.isMicrophoneInUse()
         let voiceActive = config.vadEnabled ? voiceActivity.isVoiceActive() : false
         let lastVoiceActivityDate = config.vadEnabled ? voiceActivity.lastVoiceActivityDate : nil
@@ -285,10 +347,7 @@ final class PresenceEngine {
 
         let newState: PresenceState
         let decisionPath: String
-        if cameraActive {
-            newState = .inMeeting
-            decisionPath = "cameraActive"
-        } else if meetingActive {
+        if meetingActive {
             if !config.vadEnabled {
                 newState = .inMeeting
                 decisionPath = "meeting+vadDisabled"
@@ -311,12 +370,43 @@ final class PresenceEngine {
             "Signals -> meeting detector: \(detectorMeetingActive), calendar: \(calendarMeetingActive), debug frontmost: \(debugForcingMeeting), camera: \(cameraActive), mic: \(micActive), vadEnabled: \(self.config.vadEnabled), voiceActive: \(voiceActive), secondsSinceVoiceActivity: \(String(describing: secondsSinceVoiceActivity))"
         )
         logger.debug("Decision path: \(decisionPath, privacy: .public)")
-        logger.log("Proposed state \(newState.rawValue, privacy: .public) (previous \(self.lastState.rawValue, privacy: .public))")
+        return newState
+    }
 
-        if newState != lastState {
-            apply(newState)
+    private func finishTick(_ result: TickResult) {
+        switch result {
+        case .automatic(let newState):
+            guard currentForcedState() == nil else {
+                logger.debug("Discarding automatic result because a forced state was selected during polling")
+                return
+            }
+            logger.log("Proposed state \(newState.rawValue, privacy: .public) (previous \(self.lastState.rawValue, privacy: .public))")
+            if newState != lastState {
+                apply(newState)
+            } else {
+                logger.debug("State unchanged; no Luxafor update")
+            }
+        case .forced(let state):
+            guard currentForcedState() == state else {
+                logger.debug("Discarding stale forced-state result")
+                return
+            }
+            logger.debug("Forced state active; bypassing signals")
+            apply(state)
+        }
+    }
+
+    private func currentForcedState() -> PresenceState? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return forcedState
+    }
+
+    private func deliverOnMain(_ work: @escaping () -> Void) {
+        if Thread.isMainThread {
+            work()
         } else {
-            logger.debug("State unchanged; no Luxafor update")
+            DispatchQueue.main.async(execute: work)
         }
     }
 

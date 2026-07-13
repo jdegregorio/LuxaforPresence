@@ -44,14 +44,35 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
             )
         }
 
-        var allNodes: [AXNodeSnapshot] = []
-        for app in apps {
-            allNodes.append(contentsOf: snapshotNodes(for: app))
+        let allNodes = Self.collectNodes(for: apps, maxNodes: maxNodes) { app, remainingNodeBudget in
+            snapshotNodes(for: app, nodeLimit: remainingNodeBudget)
+        }
+        if allNodes.count == maxNodes {
+            logger.debug("AX snapshot: global node budget exhausted")
         }
         return allNodes
     }
 
-    private func snapshotNodes(for app: NSRunningApplication) -> [AXNodeSnapshot] {
+    static func collectNodes<App>(
+        for apps: [App],
+        maxNodes: Int,
+        snapshot: (App, Int) -> [AXNodeSnapshot]
+    ) -> [AXNodeSnapshot] {
+        guard maxNodes > 0 else { return [] }
+
+        var allNodes: [AXNodeSnapshot] = []
+        var remainingNodeBudget = maxNodes
+        for app in apps {
+            guard remainingNodeBudget > 0 else { break }
+            let appNodes = snapshot(app, remainingNodeBudget)
+            let acceptedNodes = appNodes.prefix(remainingNodeBudget)
+            allNodes.append(contentsOf: acceptedNodes)
+            remainingNodeBudget -= acceptedNodes.count
+        }
+        return allNodes
+    }
+
+    private func snapshotNodes(for app: NSRunningApplication, nodeLimit: Int) -> [AXNodeSnapshot] {
         let isFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
         let hasFocusedWindow = self.hasFocusedWindow(app)
         let pid = app.processIdentifier
@@ -61,6 +82,7 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
 
         let root = AXUIElementCreateApplication(app.processIdentifier)
         var queue: [(AXUIElement, Int)] = [(root, 0)]
+        var queueIndex = 0
         var nodes: [AXNodeSnapshot] = []
         var maxDepthVisited = 0
         var maxNodesHit = false
@@ -83,10 +105,11 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
         var childBucketMedium = 0
         var childBucketLarge = 0
 
-        while let (element, depth) = queue.first {
-            queue.removeFirst()
+        while queueIndex < queue.count {
+            let (element, depth) = queue[queueIndex]
+            queueIndex += 1
             dequeuedCount += 1
-            if nodes.count >= maxNodes {
+            if nodes.count >= nodeLimit {
                 maxNodesHit = true
                 break
             }
@@ -194,7 +217,7 @@ final class AccessibilitySnapshotProvider: AXSnapshotProviding {
         }
 
         logger.debug(
-            "AX snapshot summary: pid=\(pid, privacy: .public) nodes=\(nodes.count) dequeued=\(dequeuedCount) appended=\(appendedCount) maxDepthVisited=\(maxDepthVisited) maxDepth=\(self.maxDepth) maxDepthHit=\(maxDepthHit) maxNodes=\(self.maxNodes) maxNodesHit=\(maxNodesHit) role=\(roleCount) roleDesc=\(roleDescriptionCount) label=\(labelCount) placeholder=\(placeholderCount) domId=\(domIdentifierCount) identifier=\(identifierCount)"
+            "AX snapshot summary: pid=\(pid, privacy: .public) nodes=\(nodes.count) dequeued=\(dequeuedCount) appended=\(appendedCount) maxDepthVisited=\(maxDepthVisited) maxDepth=\(self.maxDepth) maxDepthHit=\(maxDepthHit) nodeLimit=\(nodeLimit) globalMaxNodes=\(self.maxNodes) maxNodesHit=\(maxNodesHit) role=\(roleCount) roleDesc=\(roleDescriptionCount) label=\(labelCount) placeholder=\(placeholderCount) domId=\(domIdentifierCount) identifier=\(identifierCount)"
         )
         logger.debug(
             "AX snapshot attributes: pid=\(pid, privacy: .public) errors=\(self.formatCounts(attributeErrorCounts), privacy: .public) empty=\(self.formatCounts(attributeEmptyCounts), privacy: .public) nonString=\(self.formatCounts(attributeNonStringCounts), privacy: .public)"
