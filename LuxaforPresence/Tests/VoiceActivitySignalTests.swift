@@ -243,6 +243,96 @@ final class VoiceActivitySignalTests: XCTestCase {
         XCTAssertEqual(engine.events, [.installTap, .start])
     }
 
+    func test_captureContextBeforeAuthorization_waitsToStart() {
+        let engine = FakeVoiceActivityAudioEngine()
+        let signal = VoiceActivitySignal(engine: engine)
+
+        signal.setCaptureContextActive(true)
+
+        XCTAssertFalse(signal.isCapturing)
+        XCTAssertTrue(engine.events.isEmpty)
+
+        signal.startIfNeeded()
+
+        XCTAssertTrue(signal.isCapturing)
+        XCTAssertEqual(engine.events, [.installTap, .start])
+    }
+
+    func test_captureContextEnding_stopsAndRemovesTapUntilContextReturns() {
+        let engine = FakeVoiceActivityAudioEngine()
+        let signal = VoiceActivitySignal(engine: engine)
+        signal.startIfNeeded()
+
+        signal.setCaptureContextActive(false)
+        signal.setCaptureContextActive(false)
+
+        XCTAssertFalse(signal.isCapturing)
+        XCTAssertEqual(
+            engine.events,
+            [.installTap, .start, .stop, .removeTap]
+        )
+
+        signal.setCaptureContextActive(true)
+
+        XCTAssertTrue(signal.isCapturing)
+        XCTAssertEqual(
+            engine.events,
+            [.installTap, .start, .stop, .removeTap, .installTap, .start]
+        )
+    }
+
+    func test_captureContextEnding_cancelsPendingStartRetry() {
+        let engine = FakeVoiceActivityAudioEngine(failuresBeforeSuccess: 1)
+        let scheduler = FakeVoiceActivityRetryScheduler()
+        let signal = VoiceActivitySignal(
+            engine: engine,
+            retryScheduler: scheduler
+        )
+        signal.startIfNeeded()
+
+        signal.setCaptureContextActive(false)
+        scheduler.runAll()
+
+        XCTAssertFalse(signal.isCapturing)
+        XCTAssertEqual(engine.events, [.installTap, .start, .stop, .removeTap])
+    }
+
+    func test_contextEndsWhileSuspended_resumeDoesNotRestartCapture() {
+        let engine = FakeVoiceActivityAudioEngine()
+        let signal = VoiceActivitySignal(engine: engine)
+        signal.startIfNeeded()
+        signal.suspend()
+
+        signal.setCaptureContextActive(false)
+        signal.resume()
+
+        XCTAssertFalse(signal.isCapturing)
+        XCTAssertEqual(
+            engine.events,
+            [.installTap, .start, .stop, .removeTap]
+        )
+    }
+
+    func test_captureContextBoundary_discardsPartialVoiceEvidence() throws {
+        let engine = FakeVoiceActivityAudioEngine()
+        let signal = VoiceActivitySignal(
+            threshold: 0.02,
+            minimumActiveDuration: 0.25,
+            engine: engine,
+            microphoneActive: { true }
+        )
+        signal.startIfNeeded()
+        engine.deliver(try makeBuffer(rms: 0.1, duration: 0.2))
+        signal.flushPendingSamplesForTesting()
+
+        signal.setCaptureContextActive(false)
+        signal.setCaptureContextActive(true)
+        engine.deliver(try makeBuffer(rms: 0.1, duration: 0.1))
+        signal.flushPendingSamplesForTesting()
+
+        XCTAssertNil(signal.lastVoiceActivityDate)
+    }
+
     func test_deinit_afterStartSucceeds_stopsEngineAndRemovesTap() {
         let engine = FakeVoiceActivityAudioEngine()
         var signal: VoiceActivitySignal? = VoiceActivitySignal(engine: engine)
@@ -285,7 +375,7 @@ final class VoiceActivitySignalTests: XCTestCase {
         )
     }
 
-    func test_signal_captureTimeMicrophoneCache_doesNotReusePreContextAudio() throws {
+    func test_signal_activeCaptureContext_countsFirstAudioBuffer() throws {
         let engine = FakeVoiceActivityAudioEngine()
         var currentDate = Date(timeIntervalSinceReferenceDate: 2_000)
         let signal = VoiceActivitySignal(
@@ -297,20 +387,14 @@ final class VoiceActivitySignalTests: XCTestCase {
         )
         signal.startIfNeeded()
 
-        // This entire buffer was captured before the off-thread cache learned
-        // that another application had the microphone, so it must not count.
+        let qualifyingEvent = expectation(description: "active-context voice qualifies")
+        signal.onQualifyingActivity = { _ in qualifyingEvent.fulfill() }
         engine.deliver(try makeBuffer(rms: 0.1, duration: 0.2))
         signal.flushPendingSamplesForTesting()
         XCTAssertNil(signal.lastVoiceActivityDate)
 
-        let qualifyingEvent = expectation(description: "post-context voice qualifies")
-        signal.onQualifyingActivity = { _ in qualifyingEvent.fulfill() }
         currentDate = currentDate.addingTimeInterval(0.05)
         engine.deliver(try makeBuffer(rms: 0.1, duration: 0.05))
-        signal.flushPendingSamplesForTesting()
-        XCTAssertNil(signal.lastVoiceActivityDate)
-        currentDate = currentDate.addingTimeInterval(0.05)
-        engine.deliver(try makeBuffer(rms: 0.1, duration: 0.2))
         signal.flushPendingSamplesForTesting()
 
         wait(for: [qualifyingEvent], timeout: 2)

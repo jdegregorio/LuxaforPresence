@@ -41,6 +41,39 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .available)
     }
 
+    func test_externalMicrophoneContext_startsAndStopsVoiceSampling() {
+        let harness = PresenceEngineHarness()
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        harness.micCam.microphoneActive = true
+        tickAndWait(engine)
+        harness.micCam.microphoneActive = false
+        tickAndWait(engine)
+
+        XCTAssertEqual(
+            harness.voiceActivity.captureContextRequests,
+            [false, true, false]
+        )
+        XCTAssertEqual(
+            harness.snapshots.map(\.voiceSamplingActive),
+            [false, true, false]
+        )
+        XCTAssertFalse(harness.voiceActivity.isCapturing)
+    }
+
+    func test_zoomWithoutExternalMicrophone_doesNotStartVoiceSampling() throws {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.zoomQuiet])
+        XCTAssertEqual(harness.voiceActivity.captureContextRequests, [false])
+        XCTAssertFalse(try XCTUnwrap(harness.snapshots.last).voiceSamplingActive)
+    }
+
     func test_voiceOneSecondAgoWithZoom_returnsVoiceRecentAndRed() {
         let harness = PresenceEngineHarness()
         harness.meetingDetector.isActive = true
@@ -197,7 +230,7 @@ final class PresenceEngineTests: XCTestCase {
             [.red(harness.config.remoteWebhookUserId), .off(harness.config.remoteWebhookUserId)]
         )
         XCTAssertEqual(harness.voiceActivity.lastVoiceActivityDate, harness.currentDate)
-        XCTAssertEqual(harness.voiceActivity.contextResetCount, 1)
+        XCTAssertEqual(harness.voiceActivity.captureContextChanges, [true, false])
     }
 
     func test_newCommunicationContext_doesNotReusePriorSessionVoice() {
@@ -289,7 +322,9 @@ final class PresenceEngineTests: XCTestCase {
 
         XCTAssertEqual(harness.states, [.zoomQuiet])
         XCTAssertFalse(try XCTUnwrap(harness.snapshots.last).voiceCurrentlyAboveThreshold)
+        XCTAssertFalse(try XCTUnwrap(harness.snapshots.last).voiceSamplingActive)
         XCTAssertNil(harness.snapshots.last?.lastVoiceActivityDate)
+        XCTAssertTrue(harness.voiceActivity.captureContextRequests.isEmpty)
     }
 
     func test_vadDisabledWithMicrophoneOnly_returnsAvailable() {
@@ -319,6 +354,7 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(snapshot.state, .voiceRecent)
         XCTAssertTrue(snapshot.zoomActive)
         XCTAssertTrue(snapshot.microphoneActive)
+        XCTAssertTrue(snapshot.voiceSamplingActive)
         XCTAssertTrue(snapshot.voiceCurrentlyAboveThreshold)
         XCTAssertEqual(snapshot.lastVoiceActivityDate, harness.currentDate.addingTimeInterval(-12))
         XCTAssertEqual(snapshot.evaluatedAt, harness.currentDate)
@@ -354,6 +390,18 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.micCam.microphoneReadCount, 0)
         XCTAssertTrue(harness.snapshots.isEmpty)
         XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
+    }
+
+    func test_manualOverride_stopsVoiceSamplingUntilAutomaticModeReturns() {
+        let harness = PresenceEngineHarness()
+        harness.micCam.microphoneActive = true
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        engine.force(.available)
+
+        XCTAssertEqual(harness.voiceActivity.captureContextChanges, [true, false])
+        XCTAssertFalse(harness.voiceActivity.isCapturing)
     }
 
     func test_supersededQueuedManualOverride_discardsStaleCommand() {
@@ -403,6 +451,7 @@ final class PresenceEngineTests: XCTestCase {
 
     func test_forceSelectedDuringAutomaticPoll_discardsStaleAutomaticResult() {
         let harness = PresenceEngineHarness()
+        harness.micCam.microphoneActive = true
         let blockingDetector = BlockingMeetingDetector(result: true)
         let engine = harness.makeEngine(meetingDetector: blockingDetector)
         let tickCompleted = expectation(description: "tick completed")
@@ -416,6 +465,8 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.states, [.available])
         XCTAssertTrue(harness.snapshots.isEmpty)
         XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.voiceActivity.captureContextChanges, [true, false])
+        XCTAssertFalse(harness.voiceActivity.isCapturing)
     }
 
     func test_tickCoalescesRequestWhileSignalPollIsInFlight() {
@@ -993,12 +1044,27 @@ private final class FakeVoiceActivitySignal: VoiceActivitySignalProtocol {
     var onQualifyingActivity: ((Date) -> Void)?
     var active = false
     var lastActivityDate: Date?
+    private(set) var isCapturing = false
+    private(set) var captureContextRequests: [Bool] = []
+    private(set) var captureContextChanges: [Bool] = []
     private(set) var suspendCount = 0
     private(set) var resumeCount = 0
     private(set) var resetCount = 0
-    private(set) var contextResetCount = 0
+    private var captureContextActive = false
+    private var isSuspended = false
 
     func requestAccessIfNeeded() {}
+
+    func setCaptureContextActive(_ active: Bool) {
+        captureContextRequests.append(active)
+        guard captureContextActive != active else { return }
+        captureContextActive = active
+        captureContextChanges.append(active)
+        isCapturing = active && !isSuspended
+        if !active {
+            self.active = false
+        }
+    }
 
     func isVoiceActive() -> Bool {
         active
@@ -1010,16 +1076,15 @@ private final class FakeVoiceActivitySignal: VoiceActivitySignalProtocol {
 
     func suspend() {
         suspendCount += 1
+        isSuspended = true
+        isCapturing = false
         active = false
     }
 
     func resume() {
         resumeCount += 1
-    }
-
-    func resetDetectionContext() {
-        contextResetCount += 1
-        active = false
+        isSuspended = false
+        isCapturing = captureContextActive
     }
 
     func reset() {
@@ -1082,6 +1147,7 @@ private final class FakeLocalOutputHeartbeat: LocalOutputHeartbeating {
 
 private final class BlockingVoiceActivitySignal: VoiceActivitySignalProtocol {
     var onQualifyingActivity: ((Date) -> Void)?
+    var isCapturing: Bool { false }
 
     private let blocked = DispatchSemaphore(value: 0)
     private let resumeSignal = DispatchSemaphore(value: 0)
@@ -1107,10 +1173,10 @@ private final class BlockingVoiceActivitySignal: VoiceActivitySignalProtocol {
     }
 
     func requestAccessIfNeeded() {}
+    func setCaptureContextActive(_ active: Bool) {}
     func isVoiceActive() -> Bool { false }
     func suspend() {}
     func resume() {}
-    func resetDetectionContext() {}
 
     func reset() {
         lock.lock()

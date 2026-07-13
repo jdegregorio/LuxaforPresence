@@ -5,6 +5,7 @@ struct PresenceMenuDiagnostics: Equatable {
     let outputTitle: String
     let zoomTitle: String
     let microphoneTitle: String
+    let voiceSamplingTitle: String
     let voiceSignalTitle: String
     let lastVoiceTitle: String
     let flashingRemainingTitle: String
@@ -22,8 +23,13 @@ struct PresenceMenuDiagnostics: Equatable {
         statusTitle = "Status: \(state.displayName)"
         outputTitle = "Output: \(output?.menuDisplayName ?? "Unknown")"
         zoomTitle = "Zoom: \(snapshot.map { $0.zoomActive ? "Active" : "Inactive" } ?? "Unknown")"
-        microphoneTitle = "Microphone: \(snapshot.map { $0.microphoneActive ? "In Use" : "Not In Use" } ?? "Unknown")"
-        voiceSignalTitle = "Voice Signal: \(snapshot.map { $0.voiceCurrentlyAboveThreshold ? "Active" : "Inactive" } ?? "Unknown")"
+        microphoneTitle = "External Microphone: \(snapshot.map { $0.microphoneActive ? "In Use" : "Not In Use" } ?? "Unknown")"
+        if manualOverride != nil {
+            voiceSamplingTitle = "Voice Sampling: Idle"
+        } else {
+            voiceSamplingTitle = "Voice Sampling: \(snapshot.map { $0.voiceSamplingActive ? "Active" : "Idle" } ?? "Unknown")"
+        }
+        voiceSignalTitle = "Voice Energy: \(snapshot.map { $0.voiceCurrentlyAboveThreshold ? "Detected" : "Quiet" } ?? "Unknown")"
 
         let elapsed = snapshot?.lastVoiceActivityDate.map {
             max(0, now.timeIntervalSince($0))
@@ -54,6 +60,7 @@ struct PresenceMenuDiagnostics: Equatable {
             outputTitle,
             zoomTitle,
             microphoneTitle,
+            voiceSamplingTitle,
             voiceSignalTitle,
             lastVoiceTitle,
             flashingRemainingTitle,

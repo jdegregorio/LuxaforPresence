@@ -17,6 +17,7 @@ struct PresenceSnapshot: Equatable {
     let state: PresenceState
     let zoomActive: Bool
     let microphoneActive: Bool
+    let voiceSamplingActive: Bool
     let voiceCurrentlyAboveThreshold: Bool
     let lastVoiceActivityDate: Date?
     let evaluatedAt: Date

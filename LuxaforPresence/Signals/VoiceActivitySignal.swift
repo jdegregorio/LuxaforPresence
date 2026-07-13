@@ -4,12 +4,13 @@ import OSLog
 
 protocol VoiceActivitySignalProtocol: AnyObject {
     var onQualifyingActivity: ((Date) -> Void)? { get set }
+    var isCapturing: Bool { get }
     func requestAccessIfNeeded()
+    func setCaptureContextActive(_ active: Bool)
     func isVoiceActive() -> Bool
     var lastVoiceActivityDate: Date? { get }
     func suspend()
     func resume()
-    func resetDetectionContext()
     func reset()
 }
 
@@ -91,6 +92,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     private var activityHandler: ((Date) -> Void)?
     private var lifecycleState = LifecycleState.stopped
     private var authorizationGranted = false
+    private var captureContextActive = false
     private var acceptingSamples = false
     private var cachedMicrophoneActive = false
     private var resetInProgress = false
@@ -153,6 +155,12 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         return lastActivity
     }
 
+    var isCapturing: Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return lifecycleState == .started
+    }
+
     var latestRMS: Double? {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -189,8 +197,50 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     func startIfNeeded() {
         lifecycleLock.lock()
         authorizationGranted = true
+        let contextChanged = !captureContextActive
+        captureContextActive = true
+        let shouldStart = lifecycleState == .stopped
         lifecycleLock.unlock()
-        attemptStart(remainingAttempts: maxStartAttempts, from: .stopped)
+
+        if contextChanged {
+            prepareForCaptureContext()
+        }
+        if shouldStart {
+            attemptStart(remainingAttempts: maxStartAttempts, from: .stopped)
+        }
+    }
+
+    func setCaptureContextActive(_ active: Bool) {
+        lifecycleLock.lock()
+        guard captureContextActive != active else {
+            lifecycleLock.unlock()
+            return
+        }
+        captureContextActive = active
+
+        if active {
+            let shouldStart = authorizationGranted && lifecycleState == .stopped
+            lifecycleLock.unlock()
+            prepareForCaptureContext()
+            if shouldStart {
+                attemptStart(remainingAttempts: maxStartAttempts, from: .stopped)
+            }
+            logger.debug("Voice activity capture context became active")
+            return
+        }
+
+        let wasStarted = lifecycleState == .started
+        if wasStarted {
+            setAcceptingSamples(false)
+            engine.stop()
+            engine.removeTap()
+        }
+        if lifecycleState != .suspended {
+            lifecycleState = .stopped
+        }
+        lifecycleLock.unlock()
+        resetDebounce(preserveLastActivity: true)
+        logger.debug("Voice activity capture context became inactive")
     }
 
     func suspend() {
@@ -214,7 +264,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
             return
         }
         lifecycleState = .stopped
-        let shouldStart = authorizationGranted
+        let shouldStart = authorizationGranted && captureContextActive
         lifecycleLock.unlock()
 
         if shouldStart {
@@ -228,11 +278,6 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         logger.log("Voice activity timer reset")
     }
 
-    func resetDetectionContext() {
-        resetDebounce(preserveLastActivity: true)
-        logger.debug("Voice activity debounce reset at communication-context boundary")
-    }
-
     /// Deterministic queue drain used by unit tests for asynchronous audio taps.
     func flushPendingSamplesForTesting() {
         guard DispatchQueue.getSpecific(key: processingQueueKey) == nil else { return }
@@ -242,7 +287,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     private func markAuthorizedAndStart() {
         lifecycleLock.lock()
         authorizationGranted = true
-        let shouldStart = lifecycleState == .stopped
+        let shouldStart = captureContextActive && lifecycleState == .stopped
         lifecycleLock.unlock()
         if shouldStart {
             attemptStart(remainingAttempts: maxStartAttempts, from: .stopped)
@@ -251,7 +296,9 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
 
     private func attemptStart(remainingAttempts: Int, from expectedState: LifecycleState) {
         lifecycleLock.lock()
-        guard lifecycleState == expectedState else {
+        guard lifecycleState == expectedState,
+              authorizationGranted,
+              captureContextActive else {
             lifecycleLock.unlock()
             return
         }
@@ -428,6 +475,13 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     private func setAcceptingSamples(_ acceptingSamples: Bool) {
         sampleLock.lock()
         self.acceptingSamples = acceptingSamples
+        sampleLock.unlock()
+    }
+
+    private func prepareForCaptureContext() {
+        resetDebounce(preserveLastActivity: true)
+        sampleLock.lock()
+        cachedMicrophoneActive = true
         sampleLock.unlock()
     }
 

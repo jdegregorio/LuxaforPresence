@@ -13,7 +13,9 @@ The red timeline continues while either Zoom or external microphone use keeps th
 
 ## Privacy and permissions
 
-The packaged app requests only **Microphone** permission. `AVAudioEngine` calculates RMS energy from short in-memory buffers. It never records, stores, transmits, or transcribes audio, and it never logs individual audio samples.
+The packaged app requests only **Microphone** permission. Permission alone does not keep an audio stream open: `AVAudioEngine` starts only while macOS reports that another application is using a microphone, and it stops when that external use ends, a manual override is selected, the Mac sleeps, or the app quits. While active, it calculates RMS energy from short in-memory buffers. It never records, stores, transmits, or transcribes audio, and it never logs individual audio samples.
+
+The macOS microphone privacy indicator should therefore appear only during an external microphone session, apart from any brief system-controlled linger after capture stops. LuxaforPresence can report input energy as detected or quiet; it cannot prove that another application's mute control is enabled because silence may also mean a quiet room, a different input device, or application-level processing.
 
 Zoom detection is process-based (`CptHost`) and does not require Accessibility, Calendar, Camera, browser automation, or Apple Events permissions.
 
@@ -41,7 +43,7 @@ Remote webhook transport remains available as a fallback and requires a non-plac
 
 ## Menu diagnostics and controls
 
-The menu shows the current state and Luxafor output, Zoom and external microphone status, current above-threshold energy, last qualifying voice time, and remaining flashing/cooldown time.
+The menu shows the current state and Luxafor output, Zoom status, external microphone ownership, whether LuxaforPresence is actively sampling, detected input energy, the last qualifying voice time, and remaining flashing/cooldown time.
 
 Manual choices take precedence over automatic detection:
 
