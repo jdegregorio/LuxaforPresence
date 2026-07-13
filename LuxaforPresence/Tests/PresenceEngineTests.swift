@@ -2,416 +2,586 @@ import XCTest
 @testable import LuxaforPresence
 
 final class PresenceEngineTests: XCTestCase {
-    func testTick_transitionsToInMeeting_whenMeetingDetectorActive_andVoiceActive() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        let mic = FakeMicCamSignal()
-        mic.nextMic = true
-        let front = FakeFrontmostAppSignal()
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = true
-        let voiceActivity = FakeVoiceActivitySignal()
-        voiceActivity.active = true
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            voiceActivity: voiceActivity,
-            luxafor: lux
-        )
+    func test_zoomActiveWithoutVoice_returnsZoomQuietAndYellow() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.zoomQuiet])
+        XCTAssertEqual(harness.luxafor.actions, [.yellow(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.snapshots.last?.decisionPath, .zoomQuiet)
     }
 
-    func testTick_transitionsToInMeetingSilent_whenExternalMicActiveWithoutVoice() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        let mic = FakeMicCamSignal()
-        mic.nextMic = true
-        let front = FakeFrontmostAppSignal()
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = false
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            luxafor: lux
-        )
+    func test_noCommunicationContext_returnsAvailableAndOff() {
+        let harness = PresenceEngineHarness()
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-1)
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.yellow(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.available])
+        XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.snapshots.last?.decisionPath, .noCommunicationContext)
     }
 
-    func testTick_transitionsToInMeeting_whenExternalMicAndVoiceAreActive() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        let mic = FakeMicCamSignal()
-        mic.nextMic = true
-        let voiceActivity = FakeVoiceActivitySignal()
-        voiceActivity.active = true
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: FakeFrontmostAppSignal(),
-            calendar: FakeCalendarSignal(),
-            meetingDetector: FakeMeetingDetector(),
-            voiceActivity: voiceActivity,
-            luxafor: lux
-        )
+    func test_microphoneActiveWithoutVoice_returnsAvailableAndOff() {
+        let harness = PresenceEngineHarness()
+        harness.micCam.microphoneActive = true
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.available])
+        XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.snapshots.last?.decisionPath, .available)
     }
 
-    func testTick_transitionsToInMeeting_whenCameraActive_evenIfMeetingDetectorInactive() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        let mic = FakeMicCamSignal()
-        mic.nextCamera = true
-        let front = FakeFrontmostAppSignal()
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = false
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            luxafor: lux
-        )
+    func test_voiceOneSecondAgoWithZoom_returnsVoiceRecentAndRed() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-1)
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.voiceRecent])
+        XCTAssertEqual(harness.luxafor.actions, [.red(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.snapshots.last?.decisionPath, .recentVoice)
     }
 
-    func testTick_transitionsToInMeeting_whenCalendarActive_evenIfMeetingDetectorInactive() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = true
-        config.vadEnabled = false
-        let mic = FakeMicCamSignal()
-        let front = FakeFrontmostAppSignal()
-        let calendar = FakeCalendarSignal()
-        calendar.ongoingMeeting = true
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = false
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            luxafor: lux
-        )
+    func test_voiceOneSecondAgoWithMicrophoneOnly_returnsVoiceRecentAndRed() {
+        let harness = PresenceEngineHarness()
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-1)
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.voiceRecent])
+        XCTAssertEqual(harness.luxafor.actions, [.red(harness.config.remoteWebhookUserId)])
     }
 
-    func testTick_usesDebugFlagToAssumeMeetingWhenFrontmostAllowlisted() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        config.debugAssumeFrontmostImpliesMic = true
-        config.vadEnabled = false
-        let mic = FakeMicCamSignal()
-        let front = FakeFrontmostAppSignal()
-        front.isMeetingApp = true
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = false
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            luxafor: lux
-        )
+    func test_recentVoiceWithoutCommunicationContext_returnsAvailable() {
+        let harness = PresenceEngineHarness()
+        harness.voiceActivity.active = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.available])
+        XCTAssertNil(harness.snapshots.last?.lastVoiceActivityDate)
     }
 
-    func testTick_frontmostAloneDoesNotTriggerMeetingWithoutDebug() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        let mic = FakeMicCamSignal()
-        let front = FakeFrontmostAppSignal()
-        front.isMeetingApp = true
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = false
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            luxafor: lux
-        )
+    func test_voiceImmediatelyBeforeRecentBoundary_returnsVoiceRecent() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-299.999)
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.voiceRecent])
     }
 
-    func testForceBypassesSignalsUntilChanged() {
-        let config = PresenceEngine.Config()
-        let mic = FakeMicCamSignal()
-        mic.nextMic = true
-        let front = FakeFrontmostAppSignal()
-        front.isMeetingApp = true
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = true
-        let voiceActivity = FakeVoiceActivitySignal()
-        voiceActivity.active = true
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            voiceActivity: voiceActivity,
-            luxafor: lux
-        )
-
-        engine.force(.notMeeting)
-        mic.nextMic = true
-        front.isMeetingApp = true
-        tickAndWait(engine)
-
-        XCTAssertEqual(lux.actions, [.off(config.remoteWebhookUserId), .off(config.remoteWebhookUserId)])
-    }
-
-    func testTick_meetingActiveAndVadSilentBeyondGrace_turnsYellow() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        config.vadGraceSeconds = 10
-        let mic = FakeMicCamSignal()
-        let front = FakeFrontmostAppSignal()
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = true
-        let voiceActivity = FakeVoiceActivitySignal()
-        voiceActivity.active = false
-        let fixedNow = Date()
-        voiceActivity.lastActivityDate = fixedNow.addingTimeInterval(-11)
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            voiceActivity: voiceActivity,
-            luxafor: lux,
-            now: { fixedNow }
-        )
+    func test_voiceAtRecentBoundary_returnsVoiceCooldown() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-300)
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.yellow(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.voiceCooldown])
+        XCTAssertEqual(harness.snapshots.last?.decisionPath, .voiceCooldown)
     }
 
-    func testTick_meetingActiveAndVadActive_turnsRed() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        let mic = FakeMicCamSignal()
-        let front = FakeFrontmostAppSignal()
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = true
-        let voiceActivity = FakeVoiceActivitySignal()
-        voiceActivity.active = true
-        voiceActivity.lastActivityDate = Date()
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            voiceActivity: voiceActivity,
-            luxafor: lux
-        )
+    func test_voiceImmediatelyBeforeCooldownBoundary_returnsVoiceCooldown() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-599.999)
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.voiceCooldown])
     }
 
-    func testTick_meetingActiveAndVadSilentWithinGrace_turnsRed() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        config.vadGraceSeconds = 10
-        let mic = FakeMicCamSignal()
-        let front = FakeFrontmostAppSignal()
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = true
-        let voiceActivity = FakeVoiceActivitySignal()
-        voiceActivity.active = false
-        let fixedNow = Date()
-        voiceActivity.lastActivityDate = fixedNow.addingTimeInterval(-5)
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            voiceActivity: voiceActivity,
-            luxafor: lux,
-            now: { fixedNow }
-        )
+    func test_voiceAtCooldownBoundaryWithZoom_returnsZoomQuiet() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-600)
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.zoomQuiet])
+        XCTAssertEqual(harness.luxafor.actions, [.yellow(harness.config.remoteWebhookUserId)])
     }
 
-    func testTick_cameraActiveOverridesVadSilent_turnsRed() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        let mic = FakeMicCamSignal()
-        mic.nextCamera = true
-        let front = FakeFrontmostAppSignal()
-        let calendar = FakeCalendarSignal()
-        let meetingDetector = FakeMeetingDetector()
-        meetingDetector.isActive = true
-        let voiceActivity = FakeVoiceActivitySignal()
-        voiceActivity.active = false
-        let lux = FakeLuxaforClient()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: mic,
-            frontApp: front,
-            calendar: calendar,
-            meetingDetector: meetingDetector,
-            voiceActivity: voiceActivity,
-            luxafor: lux
-        )
+    func test_voiceAfterCooldownWithMicrophoneOnly_returnsAvailable() {
+        let harness = PresenceEngineHarness()
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-601)
+        let engine = harness.makeEngine()
 
         tickAndWait(engine)
 
-        XCTAssertEqual(lux.actions, [.on(config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.states, [.available])
+        XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
     }
 
-    func testTick_coalescesRequestWhileSignalPollIsInFlight() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        config.vadEnabled = false
-        let meetingDetector = BlockingMeetingDetector()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: FakeMicCamSignal(),
-            frontApp: FakeFrontmostAppSignal(),
-            calendar: FakeCalendarSignal(),
-            meetingDetector: meetingDetector,
-            luxafor: FakeLuxaforClient()
+    func test_zeroVoiceDurations_skipBothTimedStates() {
+        let harness = PresenceEngineHarness { config in
+            config.recentVoiceBlinkSeconds = 0
+            config.voiceCooldownSeconds = 0
+        }
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.zoomQuiet])
+    }
+
+    func test_microphoneEndingWhileZoomRemainsActive_preservesRecentVoiceState() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        harness.micCam.microphoneActive = false
+        harness.currentDate = harness.currentDate.addingTimeInterval(120)
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.voiceRecent])
+        XCTAssertEqual(harness.snapshots.map(\.state), [.voiceRecent, .voiceRecent])
+        XCTAssertEqual(harness.luxafor.actions, [.red(harness.config.remoteWebhookUserId)])
+    }
+
+    func test_communicationContextEndingDuringRedTimeline_turnsOffImmediately() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        harness.meetingDetector.isActive = false
+        harness.micCam.microphoneActive = false
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.voiceRecent, .available])
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [.red(harness.config.remoteWebhookUserId), .off(harness.config.remoteWebhookUserId)]
         )
+        XCTAssertEqual(harness.voiceActivity.lastVoiceActivityDate, harness.currentDate)
+    }
+
+    func test_newCommunicationContext_doesNotReusePriorSessionVoice() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let firstVoiceDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        harness.meetingDetector.isActive = false
+        harness.micCam.microphoneActive = false
+        tickAndWait(engine)
+        harness.currentDate = harness.currentDate.addingTimeInterval(60)
+        harness.meetingDetector.isActive = true
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.voiceRecent, .available, .zoomQuiet])
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [
+                .red(harness.config.remoteWebhookUserId),
+                .off(harness.config.remoteWebhookUserId),
+                .yellow(harness.config.remoteWebhookUserId),
+            ]
+        )
+        XCTAssertEqual(harness.snapshots.last?.lastVoiceActivityDate, firstVoiceDate)
+        XCTAssertEqual(harness.snapshots.last?.decisionPath, .zoomQuiet)
+    }
+
+    func test_voiceObservedOutsideMicrophoneContext_doesNotColorLaterZoomSessionRed() {
+        let harness = PresenceEngineHarness()
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        harness.currentDate = harness.currentDate.addingTimeInterval(1)
+        harness.meetingDetector.isActive = true
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.available, .zoomQuiet])
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [
+                .off(harness.config.remoteWebhookUserId),
+                .yellow(harness.config.remoteWebhookUserId),
+            ]
+        )
+        XCTAssertNil(harness.snapshots.last?.lastVoiceActivityDate)
+    }
+
+    func test_newVoiceDuringCooldown_returnsToVoiceRecent() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-301)
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.voiceCooldown, .voiceRecent])
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [.red(harness.config.remoteWebhookUserId), .red(harness.config.remoteWebhookUserId)]
+        )
+    }
+
+    func test_vadDisabledWithZoom_returnsZoomQuietAndHidesVoiceDiagnostics() throws {
+        let harness = PresenceEngineHarness { config in
+            config.vadEnabled = false
+        }
+        harness.meetingDetector.isActive = true
+        harness.voiceActivity.active = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.zoomQuiet])
+        XCTAssertFalse(try XCTUnwrap(harness.snapshots.last).voiceCurrentlyAboveThreshold)
+        XCTAssertNil(harness.snapshots.last?.lastVoiceActivityDate)
+    }
+
+    func test_vadDisabledWithMicrophoneOnly_returnsAvailable() {
+        let harness = PresenceEngineHarness { config in
+            config.vadEnabled = false
+        }
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.available])
+    }
+
+    func test_cameraCalendarAndFrontmostSignals_doNotAffectFamilyPresenceState() {
+        let harness = PresenceEngineHarness { config in
+            config.useCalendar = true
+            config.debugAssumeFrontmostImpliesMic = true
+        }
+        harness.micCam.cameraActive = true
+        harness.frontApp.isMeetingApp = true
+        harness.calendar.ongoingMeeting = true
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.available])
+        XCTAssertEqual(harness.micCam.cameraReadCount, 0)
+        XCTAssertEqual(harness.frontApp.readCount, 0)
+        XCTAssertEqual(harness.calendar.readCount, 0)
+    }
+
+    func test_snapshot_containsSignalsTimestampAndDecisionPath() throws {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.active = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-12)
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+
+        let snapshot = try XCTUnwrap(harness.snapshots.last)
+        XCTAssertEqual(snapshot.state, .voiceRecent)
+        XCTAssertTrue(snapshot.zoomActive)
+        XCTAssertTrue(snapshot.microphoneActive)
+        XCTAssertTrue(snapshot.voiceCurrentlyAboveThreshold)
+        XCTAssertEqual(snapshot.lastVoiceActivityDate, harness.currentDate.addingTimeInterval(-12))
+        XCTAssertEqual(snapshot.evaluatedAt, harness.currentDate)
+        XCTAssertEqual(snapshot.secondsSinceVoiceActivity, 12)
+        XCTAssertEqual(snapshot.decisionPath, .recentVoice)
+    }
+
+    func test_unchangedAutomaticState_emitsSnapshotsWithoutDuplicateOutput() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        let engine = harness.makeEngine()
+
+        tickAndWait(engine)
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.zoomQuiet])
+        XCTAssertEqual(harness.snapshots.count, 2)
+        XCTAssertEqual(harness.luxafor.actions, [.yellow(harness.config.remoteWebhookUserId)])
+    }
+
+    func test_manualOverride_bypassesSignalsAndDoesNotDuplicateOutput() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        harness.micCam.microphoneActive = true
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        let engine = harness.makeEngine()
+
+        engine.force(.available)
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.available])
+        XCTAssertEqual(harness.meetingDetector.callCount, 0)
+        XCTAssertEqual(harness.micCam.microphoneReadCount, 0)
+        XCTAssertTrue(harness.snapshots.isEmpty)
+        XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
+    }
+
+    func test_supersededQueuedManualOverride_discardsStaleCommand() {
+        let harness = PresenceEngineHarness()
+        let engine = harness.makeEngine()
+        let mainQueueDrained = expectation(description: "main queue drained")
+        let backgroundForceReturned = DispatchSemaphore(value: 0)
+
+        DispatchQueue.global().async {
+            engine.force(.voiceRecent)
+            backgroundForceReturned.signal()
+        }
+        XCTAssertEqual(backgroundForceReturned.wait(timeout: .now() + 1), .success)
+        engine.force(.available)
+        DispatchQueue.main.async {
+            mainQueueDrained.fulfill()
+        }
+
+        wait(for: [mainQueueDrained], timeout: 1)
+        XCTAssertEqual(harness.states, [.available])
+        XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
+    }
+
+    func test_clearForce_immediatelyReevaluatesAutomaticState() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        let engine = harness.makeEngine()
+        let automaticStateApplied = expectation(description: "automatic state applied")
+        engine.onStateChange = { state in
+            harness.states.append(state)
+            if state == .zoomQuiet {
+                automaticStateApplied.fulfill()
+            }
+        }
+
+        engine.force(.available)
+        engine.clearForce()
+
+        wait(for: [automaticStateApplied], timeout: 2)
+        XCTAssertEqual(harness.states, [.available, .zoomQuiet])
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [.off(harness.config.remoteWebhookUserId), .yellow(harness.config.remoteWebhookUserId)]
+        )
+        XCTAssertEqual(harness.meetingDetector.callCount, 1)
+    }
+
+    func test_forceSelectedDuringAutomaticPoll_discardsStaleAutomaticResult() {
+        let harness = PresenceEngineHarness()
+        let blockingDetector = BlockingMeetingDetector(result: true)
+        let engine = harness.makeEngine(meetingDetector: blockingDetector)
+        let tickCompleted = expectation(description: "tick completed")
+
+        engine.tick { tickCompleted.fulfill() }
+        XCTAssertEqual(blockingDetector.waitUntilStarted(), .success)
+        engine.force(.available)
+        blockingDetector.resume()
+
+        wait(for: [tickCompleted], timeout: 2)
+        XCTAssertEqual(harness.states, [.available])
+        XCTAssertTrue(harness.snapshots.isEmpty)
+        XCTAssertEqual(harness.luxafor.actions, [.off(harness.config.remoteWebhookUserId)])
+    }
+
+    func test_tickCoalescesRequestWhileSignalPollIsInFlight() {
+        let harness = PresenceEngineHarness()
+        let blockingDetector = BlockingMeetingDetector(result: false)
+        let engine = harness.makeEngine(meetingDetector: blockingDetector)
         let firstTickCompleted = expectation(description: "first tick completed")
         let coalescedTickCompleted = expectation(description: "coalesced tick completed")
 
         engine.tick { firstTickCompleted.fulfill() }
-        XCTAssertEqual(meetingDetector.waitUntilStarted(), .success)
+        XCTAssertEqual(blockingDetector.waitUntilStarted(), .success)
         engine.tick { coalescedTickCompleted.fulfill() }
-        meetingDetector.resume()
+        blockingDetector.resume()
 
         wait(for: [firstTickCompleted, coalescedTickCompleted], timeout: 2)
-        XCTAssertEqual(meetingDetector.callCount, 1)
+        XCTAssertEqual(blockingDetector.callCount, 1)
     }
 
-    func testTick_readsSignalsOffMainAndDeliversStateChangeOnMain() {
-        var config = PresenceEngine.Config()
-        config.useCalendar = false
-        config.vadEnabled = false
-        let meetingDetector = ThreadRecordingMeetingDetector()
-        let engine = PresenceEngine(
-            config: config,
-            micCam: FakeMicCamSignal(),
-            frontApp: FakeFrontmostAppSignal(),
-            calendar: FakeCalendarSignal(),
-            meetingDetector: meetingDetector,
-            luxafor: FakeLuxaforClient()
-        )
+    func test_tickReadsSignalsOffMainAndDeliversCallbacksOnMain() {
+        let harness = PresenceEngineHarness()
+        let detector = ThreadRecordingMeetingDetector()
+        let engine = harness.makeEngine(meetingDetector: detector)
         let stateChanged = expectation(description: "state delivered")
-        engine.onStateChange = { _ in
+        let snapshotDelivered = expectation(description: "snapshot delivered")
+        engine.onStateChange = { state in
+            harness.states.append(state)
             XCTAssertTrue(Thread.isMainThread)
             stateChanged.fulfill()
+        }
+        engine.onSnapshot = { snapshot in
+            harness.snapshots.append(snapshot)
+            XCTAssertTrue(Thread.isMainThread)
+            snapshotDelivered.fulfill()
         }
 
         tickAndWait(engine)
 
-        wait(for: [stateChanged], timeout: 1)
-        XCTAssertFalse(meetingDetector.wasCalledOnMainThread)
+        wait(for: [stateChanged, snapshotDelivered], timeout: 1)
+        XCTAssertFalse(detector.wasCalledOnMainThread)
     }
 
-    private func tickAndWait(_ engine: PresenceEngine) {
+    private func tickAndWait(
+        _ engine: PresenceEngine,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         let tickCompleted = expectation(description: "tick completed")
         engine.tick { tickCompleted.fulfill() }
         wait(for: [tickCompleted], timeout: 2)
     }
 }
 
+// MARK: - Harness
+
+private final class PresenceEngineHarness {
+    var config: PresenceEngine.Config
+    let micCam = FakeMicCamSignal()
+    let frontApp = FakeFrontmostAppSignal()
+    let calendar = FakeCalendarSignal()
+    let meetingDetector = FakeMeetingDetector()
+    let voiceActivity = FakeVoiceActivitySignal()
+    let luxafor = FakeLuxaforClient()
+    var currentDate = Date(timeIntervalSinceReferenceDate: 1_000_000)
+    var states: [PresenceState] = []
+    var snapshots: [PresenceSnapshot] = []
+
+    init(configure: (inout PresenceEngine.Config) -> Void = { _ in }) {
+        var config = PresenceEngine.Config(values: [:])
+        configure(&config)
+        self.config = config
+    }
+
+    func makeEngine(meetingDetector: MeetingDetectorProtocol? = nil) -> PresenceEngine {
+        let engine = PresenceEngine(
+            config: config,
+            micCam: micCam,
+            frontApp: frontApp,
+            calendar: calendar,
+            meetingDetector: meetingDetector ?? self.meetingDetector,
+            voiceActivity: voiceActivity,
+            luxafor: luxafor,
+            now: { [unowned self] in currentDate }
+        )
+        engine.onStateChange = { [weak self] state in
+            self?.states.append(state)
+        }
+        engine.onSnapshot = { [weak self] snapshot in
+            self?.snapshots.append(snapshot)
+        }
+        return engine
+    }
+}
+
 // MARK: - Test Doubles
 
 private final class FakeMicCamSignal: MicCamSignalProtocol {
-    var nextMic = false
-    var nextCamera = false
+    var microphoneActive = false
+    var cameraActive = false
+    private(set) var microphoneReadCount = 0
+    private(set) var cameraReadCount = 0
+
     func requestAccessIfNeeded() {}
-    func isMicrophoneInUseByAnotherApplication() -> Bool { nextMic }
-    func isCameraInUse() -> Bool { nextCamera }
-    func anyInUse() -> Bool { nextMic || nextCamera }
+
+    func isMicrophoneInUseByAnotherApplication() -> Bool {
+        microphoneReadCount += 1
+        return microphoneActive
+    }
+
+    func isCameraInUse() -> Bool {
+        cameraReadCount += 1
+        return cameraActive
+    }
+
+    func anyInUse() -> Bool {
+        microphoneActive || cameraActive
+    }
 }
 
 private final class FakeFrontmostAppSignal: FrontmostAppSignalProtocol {
     var isMeetingApp = false
-    func isFrontmostIn(allowlist: Set<String>) -> Bool { isMeetingApp }
+    private(set) var readCount = 0
+
+    func isFrontmostIn(allowlist: Set<String>) -> Bool {
+        readCount += 1
+        return isMeetingApp
+    }
 }
 
 private final class FakeCalendarSignal: CalendarSignalProtocol {
     var granted = true
     var ongoingMeeting = false
-    func requestAccess(completion: @escaping (Bool) -> Void) { completion(granted) }
-    func hasOngoingMeetingEvent() -> Bool { ongoingMeeting }
+    private(set) var readCount = 0
+
+    func requestAccess(completion: @escaping (Bool) -> Void) {
+        completion(granted)
+    }
+
+    func hasOngoingMeetingEvent() -> Bool {
+        readCount += 1
+        return ongoingMeeting
+    }
 }
 
 private final class FakeMeetingDetector: MeetingDetectorProtocol {
-    var name: String { "Fake" }
+    var name: String { "Fake Zoom" }
     var isActive = false
-    func isMeetingActive() -> Bool { isActive }
+    private(set) var callCount = 0
+
+    func isMeetingActive() -> Bool {
+        callCount += 1
+        return isActive
+    }
 }
 
 private final class BlockingMeetingDetector: MeetingDetectorProtocol {
-    var name: String { "Blocking" }
+    var name: String { "Blocking Zoom" }
 
+    private let result: Bool
     private let started = DispatchSemaphore(value: 0)
     private let resumeSignal = DispatchSemaphore(value: 0)
     private let lock = NSLock()
     private var calls = 0
+
+    init(result: Bool) {
+        self.result = result
+    }
 
     var callCount: Int {
         lock.lock()
@@ -425,7 +595,7 @@ private final class BlockingMeetingDetector: MeetingDetectorProtocol {
         lock.unlock()
         started.signal()
         _ = resumeSignal.wait(timeout: .now() + 2)
-        return false
+        return result
     }
 
     func waitUntilStarted() -> DispatchTimeoutResult {
@@ -438,7 +608,7 @@ private final class BlockingMeetingDetector: MeetingDetectorProtocol {
 }
 
 private final class ThreadRecordingMeetingDetector: MeetingDetectorProtocol {
-    var name: String { "ThreadRecording" }
+    var name: String { "Thread Recording Zoom" }
     private(set) var wasCalledOnMainThread = true
 
     func isMeetingActive() -> Bool {
@@ -449,7 +619,7 @@ private final class ThreadRecordingMeetingDetector: MeetingDetectorProtocol {
 
 private final class FakeLuxaforClient: LuxaforClientProtocol {
     enum Action: Equatable {
-        case on(String)
+        case red(String)
         case yellow(String)
         case off(String)
     }
@@ -457,7 +627,7 @@ private final class FakeLuxaforClient: LuxaforClientProtocol {
     private(set) var actions: [Action] = []
 
     func turnOnRed(userId: String) {
-        actions.append(.on(userId))
+        actions.append(.red(userId))
     }
 
     func turnOnYellow(userId: String) {
@@ -472,7 +642,14 @@ private final class FakeLuxaforClient: LuxaforClientProtocol {
 private final class FakeVoiceActivitySignal: VoiceActivitySignalProtocol {
     var active = false
     var lastActivityDate: Date?
+
     func requestAccessIfNeeded() {}
-    func isVoiceActive() -> Bool { active }
-    var lastVoiceActivityDate: Date? { lastActivityDate }
+
+    func isVoiceActive() -> Bool {
+        active
+    }
+
+    var lastVoiceActivityDate: Date? {
+        lastActivityDate
+    }
 }
