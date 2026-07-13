@@ -14,7 +14,7 @@ final class LatestWinsRequestSender {
 
     private let session: URLSession
     private let logger: Logger
-    private let queue = DispatchQueue(label: "com.example.LuxaforPresence.webhook-delivery")
+    private let queue = DispatchQueue(label: "com.jdegregorio.LuxaforPresence.webhook-delivery")
 
     private var generation: UInt64 = 0
     private var desiredRequest: DesiredRequest?
@@ -30,10 +30,12 @@ final class LatestWinsRequestSender {
     func send(
         identifier: String,
         actionDescription: String,
+        force: Bool = false,
         requestFactory: @escaping RequestFactory
     ) {
         queue.async {
-            if self.desiredRequest?.identifier == identifier,
+            if !force,
+               self.desiredRequest?.identifier == identifier,
                self.inFlightTask != nil || self.retryScheduled || self.confirmedIdentifier == identifier {
                 self.logger.debug("Coalescing duplicate webhook state \(actionDescription, privacy: .public)")
                 return

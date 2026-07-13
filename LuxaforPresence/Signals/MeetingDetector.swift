@@ -6,10 +6,6 @@ final class MeetingDetector: MeetingDetectorProtocol {
     init(
         detectors: [MeetingDetectorProtocol] = [
             ZoomMeetingDetector(),
-            WebexMeetingDetector(),
-            TeamsMeetingDetector(),
-            SlackMeetingDetector(),
-            GoogleMeetDetector(),
         ],
         enabledNames: Set<String>? = nil
     ) {

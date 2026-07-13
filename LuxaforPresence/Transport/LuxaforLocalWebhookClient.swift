@@ -4,7 +4,7 @@ import OSLog
 final class LuxaforLocalWebhookClient: LuxaforClientProtocol {
     private let endpoint: LocalWebhookEndpoint
     private let token: String
-    private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "LuxaforLocalWebhookClient")
+    private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "LuxaforLocalWebhookClient")
     private let sender: LatestWinsRequestSender
 
     convenience init(
@@ -26,22 +26,14 @@ final class LuxaforLocalWebhookClient: LuxaforClientProtocol {
         self.sender = LatestWinsRequestSender(session: session, logger: logger)
     }
 
-    func turnOnRed(userId: String) {
-        postColor(.red)
-    }
-
-    func turnOnYellow(userId: String) {
-        postColor(.orange)
-    }
-
-    func turnOff(userId: String) {
-        postColor(.off)
-    }
-
-    private func postColor(_ color: LuxaforColor) {
+    func setSolidColor(_ color: LuxaforColor, userId: String, force: Bool) {
         let url = endpoint.colorURL
         logger.debug("Sending local webhook color \(color.localHex, privacy: .public) to configured endpoint")
-        sender.send(identifier: color.hex, actionDescription: color.localHex) { [token] in
+        sender.send(
+            identifier: color.hex,
+            actionDescription: color.localHex,
+            force: force
+        ) { [token] in
             var request = URLRequest(url: url, timeoutInterval: 5)
             request.httpMethod = "POST"
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")

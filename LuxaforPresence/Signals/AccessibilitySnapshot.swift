@@ -18,7 +18,7 @@ protocol AXSnapshotProviding {
 }
 
 final class AccessibilitySnapshotProvider: AXSnapshotProviding {
-    private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "AccessibilitySnapshot")
+    private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "AccessibilitySnapshot")
     private let maxDepth: Int
     private let maxNodes: Int
 

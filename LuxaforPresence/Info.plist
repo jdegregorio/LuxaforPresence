@@ -6,19 +6,17 @@
 	<string>com.jdegregorio.LuxaforPresence</string>
 	<key>CFBundleName</key>
 	<string>LuxaforPresence</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
 	<key>CFBundleVersion</key>
 	<string>3</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.6.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSCalendarsUsageDescription</key>
-	<string>Used to infer when you’re in a meeting.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Needed to detect when your camera is in use for meeting presence.</string>
-	<key>NSCameraUseContinuityCameraDeviceType</key>
-	<true/>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Needed to detect when your microphone is in use for meeting presence.</string>
+	<string>Audio energy is analyzed locally for voice activity. Audio is never recorded, stored, or transmitted.</string>
 </dict>
 </plist>

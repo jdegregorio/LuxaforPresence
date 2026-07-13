@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 
 final class TeamsMeetingDetector: MeetingDetectorProtocol {
-    private let logger = Logger(subsystem: "com.example.LuxaforPresence", category: "TeamsMeetingDetector")
+    private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "TeamsMeetingDetector")
     private let snapshotProvider: AXSnapshotProviding
     private let isProcessRunning: ([String]) -> Bool
     private let processNames = [
