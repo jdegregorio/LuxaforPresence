@@ -65,7 +65,8 @@ Beta. Should work for Slack and Teams on recent versions of macOS.
 1.  [Download](https://github.com/kantselovich/LuxaforPresence/releases) and install the app.
 
 2.  **Configure Luxafor transport:**
-    *   Create a configuration file at `~/.config/LuxaforPresence/config.plist`. The app will create the directory for you. You can copy the bundled config file and edit it.
+    *   Choose **Open Configuration File…** from the menu-bar app. LuxaforPresence creates `~/.config/LuxaforPresence/config.plist` from the bundled template when needed and reveals it in Finder.
+    *   After saving configuration changes, quit and reopen LuxaforPresence to apply them.
     ```xml
     <dict>
         <key>transportMode</key>
