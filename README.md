@@ -54,7 +54,7 @@ Beta. Should work for Slack and Teams on recent versions of macOS.
 
 ## Prerequisites
 
-* macOS 13.0 or newer (Apple Silicon or Intel).
+* macOS 13.0 or newer on Apple Silicon. The published build is currently arm64-only.
 * Xcode 14.3+ or Xcode Command Line Tools with Swift 5.7 (`xcode-select --install`).
 * A [Luxafor flag](https://luxafor.com/product/flag/) with [Luxafor software](https://www.luxaformanual.com/) installed.
 * If using the remote Luxafor webhook, register Luxafor `userId`.
@@ -62,7 +62,7 @@ Beta. Should work for Slack and Teams on recent versions of macOS.
 
 ## Setup
 
-1.  [Download](https://github.com/kantselovich/LuxaforPresence/releases) and install the app.
+1.  [Download](https://github.com/jdegregorio/LuxaforPresence/releases) and install the app.
 
 2.  **Configure Luxafor transport:**
     *   Choose **Open Configuration File…** from the menu-bar app. LuxaforPresence creates `~/.config/LuxaforPresence/config.plist` from the bundled template when needed and reveals it in Finder.
