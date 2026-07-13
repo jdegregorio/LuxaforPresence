@@ -187,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refreshDiagnostics() {
-        guard diagnosticItems.count == 8 else { return }
+        guard diagnosticItems.count == 9 else { return }
         let diagnostics = PresenceMenuDiagnostics(
             state: currentState,
             output: currentOutput,

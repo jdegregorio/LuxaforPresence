@@ -8,6 +8,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             state: .voiceRecent,
             zoomActive: true,
             microphoneActive: true,
+            voiceSamplingActive: true,
             voiceCurrentlyAboveThreshold: true,
             lastVoiceActivityDate: now.addingTimeInterval(-12),
             evaluatedAt: now,
@@ -26,8 +27,9 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
         XCTAssertEqual(diagnostics.statusTitle, "Status: Voice Recent (Flashing Red)")
         XCTAssertEqual(diagnostics.outputTitle, "Output: Flashing Red (750 ms)")
         XCTAssertEqual(diagnostics.zoomTitle, "Zoom: Active")
-        XCTAssertEqual(diagnostics.microphoneTitle, "Microphone: In Use")
-        XCTAssertEqual(diagnostics.voiceSignalTitle, "Voice Signal: Active")
+        XCTAssertEqual(diagnostics.microphoneTitle, "External Microphone: In Use")
+        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Active")
+        XCTAssertEqual(diagnostics.voiceSignalTitle, "Voice Energy: Detected")
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: 12s ago")
         XCTAssertEqual(diagnostics.flashingRemainingTitle, "Flashing Remaining: 4m 48s")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: —")
@@ -39,6 +41,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             state: .voiceCooldown,
             zoomActive: true,
             microphoneActive: false,
+            voiceSamplingActive: false,
             voiceCurrentlyAboveThreshold: false,
             lastVoiceActivityDate: now.addingTimeInterval(-420),
             evaluatedAt: now,
@@ -71,7 +74,9 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
         )
 
         XCTAssertEqual(diagnostics.zoomTitle, "Zoom: Unknown")
-        XCTAssertEqual(diagnostics.microphoneTitle, "Microphone: Unknown")
+        XCTAssertEqual(diagnostics.microphoneTitle, "External Microphone: Unknown")
+        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Unknown")
+        XCTAssertEqual(diagnostics.voiceSignalTitle, "Voice Energy: Unknown")
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: Never")
     }
 
@@ -81,6 +86,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             state: .voiceRecent,
             zoomActive: true,
             microphoneActive: false,
+            voiceSamplingActive: false,
             voiceCurrentlyAboveThreshold: false,
             lastVoiceActivityDate: now.addingTimeInterval(-300),
             evaluatedAt: now,
@@ -90,6 +96,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             state: .voiceCooldown,
             zoomActive: true,
             microphoneActive: false,
+            voiceSamplingActive: false,
             voiceCurrentlyAboveThreshold: false,
             lastVoiceActivityDate: now.addingTimeInterval(-600),
             evaluatedAt: now,
@@ -123,6 +130,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             state: .zoomQuiet,
             zoomActive: true,
             microphoneActive: false,
+            voiceSamplingActive: true,
             voiceCurrentlyAboveThreshold: false,
             lastVoiceActivityDate: now.addingTimeInterval(-12),
             evaluatedAt: now,
@@ -140,6 +148,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
         )
 
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: 12s ago")
+        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Idle")
         XCTAssertEqual(diagnostics.flashingRemainingTitle, "Flashing Remaining: —")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: —")
     }

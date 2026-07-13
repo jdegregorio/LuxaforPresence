@@ -352,6 +352,9 @@ final class PresenceEngine {
         stateLock.lock()
         forcedState = state
         stateLock.unlock()
+        if config.vadEnabled {
+            voiceActivity.setCaptureContextActive(false)
+        }
         logger.log("Force invoked; new forced state \(state.rawValue, privacy: .public)")
         deliverOnMain { [weak self] in
             guard let self, self.currentForcedState() == state else {
@@ -508,6 +511,12 @@ final class PresenceEngine {
         logger.debug("Evaluating Zoom meeting detector")
         let zoomActive = meetingDetector.isMeetingActive()
         let microphoneActive = micCam.isMicrophoneInUseByAnotherApplication()
+        if config.vadEnabled {
+            voiceActivity.setCaptureContextActive(microphoneActive)
+        }
+        let voiceSamplingActive = config.vadEnabled
+            ? voiceActivity.isCapturing
+            : false
         let voiceCurrentlyAboveThreshold = config.vadEnabled
             ? voiceActivity.isVoiceActive()
             : false
@@ -531,6 +540,7 @@ final class PresenceEngine {
             state: decision.state,
             zoomActive: zoomActive,
             microphoneActive: microphoneActive,
+            voiceSamplingActive: voiceSamplingActive,
             voiceCurrentlyAboveThreshold: voiceCurrentlyAboveThreshold,
             lastVoiceActivityDate: lastQualifiedVoiceActivityDate,
             evaluatedAt: evaluatedAt,
@@ -538,7 +548,7 @@ final class PresenceEngine {
         )
 
         logger.debug(
-            "Signals -> Zoom: \(zoomActive), microphone: \(microphoneActive), vadEnabled: \(self.config.vadEnabled), voiceAboveThreshold: \(voiceCurrentlyAboveThreshold), secondsSinceVoiceActivity: \(String(describing: snapshot.secondsSinceVoiceActivity))"
+            "Signals -> Zoom: \(zoomActive), microphone: \(microphoneActive), vadEnabled: \(self.config.vadEnabled), voiceSampling: \(voiceSamplingActive), voiceAboveThreshold: \(voiceCurrentlyAboveThreshold), secondsSinceVoiceActivity: \(String(describing: snapshot.secondsSinceVoiceActivity))"
         )
         logger.debug("Decision path: \(snapshot.decisionPath.rawValue, privacy: .public)")
         return snapshot
@@ -562,9 +572,6 @@ final class PresenceEngine {
         }
 
         guard communicationContextActive else {
-            if communicationContextWasActive {
-                voiceActivity.resetDetectionContext()
-            }
             communicationContextWasActive = false
             sessionVoiceActivityDate = nil
             return nil
@@ -617,6 +624,9 @@ final class PresenceEngine {
         switch result {
         case .automatic(let snapshot, let voiceTimelineGeneration):
             guard currentForcedState() == nil else {
+                if config.vadEnabled {
+                    voiceActivity.setCaptureContextActive(false)
+                }
                 logger.debug("Discarding automatic result because a forced state was selected during polling")
                 return
             }
