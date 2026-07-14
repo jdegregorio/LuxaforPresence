@@ -13,7 +13,7 @@ final class PresenceEngine {
         static let defaultVadThreshold = 0.02
         static let defaultRecentVoiceBlinkSeconds: TimeInterval = 300
         static let defaultVoiceCooldownSeconds: TimeInterval = 300
-        static let defaultBlinkIntervalMilliseconds: TimeInterval = 750
+        static let defaultBlinkIntervalMilliseconds: TimeInterval = 500
         static let minimumBlinkIntervalMilliseconds: TimeInterval = 100
         static let defaultVadMinimumActiveMilliseconds: TimeInterval = 250
         static let minimumVadMinimumActiveMilliseconds: TimeInterval = 250
