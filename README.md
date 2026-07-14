@@ -158,7 +158,7 @@ The created file is readable only by the current user. The complete default conf
     <key>voiceCooldownSeconds</key>
     <real>300</real>
     <key>blinkIntervalMilliseconds</key>
-    <integer>750</integer>
+    <integer>500</integer>
     <key>localOutputReassertSeconds</key>
     <integer>30</integer>
 </dict>
@@ -180,7 +180,7 @@ The created file is readable only by the current user. The complete default conf
 | `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required to qualify voice activity. Minimum `250`. |
 | `recentVoiceBlinkSeconds` | `300` | Duration of the flashing-red recent-voice state. |
 | `voiceCooldownSeconds` | `300` | Duration of the solid-red cooldown state. |
-| `blinkIntervalMilliseconds` | `750` | Red flash interval. Minimum `100`. |
+| `blinkIntervalMilliseconds` | `500` | Duration of each red/off phase. `500` produces one complete flash per second. Minimum `100`. |
 | `localOutputReassertSeconds` | `30` | Periodic physical-output reassertion for local transport. Minimum `5`. |
 
 Invalid numeric values are rejected at startup and replaced with safe defaults. Local plain-HTTP URLs are accepted only for loopback hosts such as `127.0.0.1` and `localhost`.

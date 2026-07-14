@@ -80,8 +80,9 @@ final class ResourceBundleTests: XCTestCase {
         XCTAssertEqual(config.vadMinimumActiveMilliseconds, 250)
         XCTAssertEqual(config.recentVoiceBlinkSeconds, 300)
         XCTAssertEqual(config.voiceCooldownSeconds, 300)
-        XCTAssertEqual(config.blinkIntervalMilliseconds, 750)
-        XCTAssertEqual(config.blinkInterval, 0.75)
+        XCTAssertEqual(config.blinkIntervalMilliseconds, 500)
+        XCTAssertEqual(config.blinkInterval, 0.5)
+        XCTAssertEqual(config.blinkInterval * 2, 1)
         XCTAssertEqual(config.localOutputReassertSeconds, 30)
     }
 

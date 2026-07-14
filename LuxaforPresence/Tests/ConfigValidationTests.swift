@@ -166,7 +166,7 @@ final class ConfigValidationTests: XCTestCase {
             config.blinkIntervalMilliseconds,
             PresenceEngine.Config.defaultBlinkIntervalMilliseconds
         )
-        XCTAssertEqual(config.blinkInterval, 0.75)
+        XCTAssertEqual(config.blinkInterval, 0.5)
     }
 
     func test_init_acceptsZoomDetectionFlag() {

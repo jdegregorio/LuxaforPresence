@@ -85,8 +85,8 @@ final class PresenceEngineTests: XCTestCase {
 
         XCTAssertEqual(harness.states, [.voiceRecent])
         XCTAssertEqual(harness.luxafor.actions, [.red(harness.config.remoteWebhookUserId)])
-        XCTAssertEqual(harness.outputs, [.blink(color: .red, interval: 0.75)])
-        XCTAssertEqual(harness.outputTimer.scheduledIntervals, [0.75])
+        XCTAssertEqual(harness.outputs, [.blink(color: .red, interval: 0.5)])
+        XCTAssertEqual(harness.outputTimer.scheduledIntervals, [0.5])
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .recentVoice)
     }
 
@@ -305,7 +305,7 @@ final class PresenceEngineTests: XCTestCase {
         )
         XCTAssertEqual(
             harness.outputs,
-            [.solid(.red), .blink(color: .red, interval: 0.75)]
+            [.solid(.red), .blink(color: .red, interval: 0.5)]
         )
     }
 
@@ -538,7 +538,7 @@ final class PresenceEngineTests: XCTestCase {
         let blinkHandler = harness.outputTimer.handler
         harness.localOutputHeartbeat.fire()
 
-        XCTAssertEqual(harness.outputTimer.scheduledIntervals, [0.75])
+        XCTAssertEqual(harness.outputTimer.scheduledIntervals, [0.5])
         XCTAssertEqual(harness.localOutputHeartbeat.startCount, 1)
         XCTAssertNotNil(blinkHandler)
         XCTAssertEqual(
