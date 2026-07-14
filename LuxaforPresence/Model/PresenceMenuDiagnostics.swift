@@ -3,6 +3,7 @@ import Foundation
 struct PresenceMenuDiagnostics: Equatable {
     let statusTitle: String
     let outputTitle: String
+    let connectionTitle: String
     let zoomTitle: String
     let microphoneTitle: String
     let voiceSamplingTitle: String
@@ -15,6 +16,8 @@ struct PresenceMenuDiagnostics: Equatable {
         state: PresenceState,
         output: LightOutput?,
         snapshot: PresenceSnapshot?,
+        transportMode: TransportMode = .local,
+        localWebhookReachable: Bool? = nil,
         recentVoiceBlinkSeconds: TimeInterval,
         voiceCooldownSeconds: TimeInterval,
         manualOverride: PresenceState? = nil,
@@ -22,6 +25,19 @@ struct PresenceMenuDiagnostics: Equatable {
     ) {
         statusTitle = "Status: \(state.displayName)"
         outputTitle = "Output: \(output?.menuDisplayName ?? "Unknown")"
+        switch transportMode {
+        case .local:
+            switch localWebhookReachable {
+            case true:
+                connectionTitle = "Luxafor Webhook: Listening"
+            case false:
+                connectionTitle = "Luxafor Webhook: Not Listening — Check Luxafor Settings"
+            case nil:
+                connectionTitle = "Luxafor Webhook: Checking…"
+            }
+        case .remote:
+            connectionTitle = "Luxafor Webhook: Remote"
+        }
         zoomTitle = "Zoom: \(snapshot.map { $0.zoomActive ? "Active" : "Inactive" } ?? "Unknown")"
         microphoneTitle = "External Microphone: \(snapshot.map { $0.microphoneActive ? "In Use" : "Not In Use" } ?? "Unknown")"
         if manualOverride != nil {
@@ -58,6 +74,7 @@ struct PresenceMenuDiagnostics: Equatable {
         [
             statusTitle,
             outputTitle,
+            connectionTitle,
             zoomTitle,
             microphoneTitle,
             voiceSamplingTitle,

@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var launchAtLoginItem: NSMenuItem!
     private var currentState: PresenceState = .unknown
     private var currentOutput: LightOutput?
+    private var localWebhookReachable: Bool?
     private var latestSnapshot: PresenceSnapshot?
     private var manualState: PresenceState?
 
@@ -44,6 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         engine.onOutputChange = { [weak self] output in
             self?.currentOutput = output
+            self?.refreshDiagnostics()
+        }
+        engine.onLocalWebhookReachabilityChange = { [weak self] reachable in
+            self?.localWebhookReachable = reachable
             self?.refreshDiagnostics()
         }
 
@@ -82,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             state: .unknown,
             output: nil,
             snapshot: nil,
+            transportMode: engine.config.transportMode,
             recentVoiceBlinkSeconds: engine.config.recentVoiceBlinkSeconds,
             voiceCooldownSeconds: engine.config.voiceCooldownSeconds,
             now: Date()
@@ -187,17 +193,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refreshDiagnostics() {
-        guard diagnosticItems.count == 9 else { return }
         let diagnostics = PresenceMenuDiagnostics(
             state: currentState,
             output: currentOutput,
             snapshot: latestSnapshot,
+            transportMode: engine.config.transportMode,
+            localWebhookReachable: localWebhookReachable,
             recentVoiceBlinkSeconds: engine.config.recentVoiceBlinkSeconds,
             voiceCooldownSeconds: engine.config.voiceCooldownSeconds,
             manualOverride: manualState,
             now: Date()
         )
-        zip(diagnosticItems, diagnostics.titles).forEach { item, title in
+        let titles = diagnostics.titles
+        guard diagnosticItems.count == titles.count else { return }
+        zip(diagnosticItems, titles).forEach { item, title in
             item.title = title
         }
     }
@@ -238,8 +247,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .requiresApproval:
             launchAtLoginItem.title = "Launch at Login (Approval Required…)"
             launchAtLoginItem.state = .mixed
-        case .unavailable:
+        case .requiresInstallation:
             launchAtLoginItem.title = "Launch at Login (Install App First)"
+            launchAtLoginItem.state = .off
+        case .unavailable:
+            launchAtLoginItem.title = "Launch at Login (Unavailable…)"
             launchAtLoginItem.state = .off
         }
     }
@@ -289,12 +301,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try launchAtLogin.setEnabled(true)
             case .requiresApproval:
                 launchAtLogin.openSystemSettings()
-            case .unavailable:
+            case .requiresInstallation:
                 let alert = NSAlert()
                 alert.messageText = "Install LuxaforPresence First"
                 alert.informativeText = "Move LuxaforPresence.app to Applications, launch that copy, and then enable Launch at Login."
                 alert.alertStyle = .informational
                 alert.runModal()
+            case .unavailable:
+                let alert = NSAlert()
+                alert.messageText = "Launch at Login Unavailable"
+                alert.informativeText = "This copy is installed correctly, but macOS could not find its launch-at-login service. Add LuxaforPresence manually in System Settings → General → Login Items, or install a Developer ID-signed and notarized release."
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: "Open Login Items")
+                alert.addButton(withTitle: "Cancel")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    launchAtLogin.openSystemSettings()
+                }
             }
         } catch {
             logger.error("Unable to update launch at login: \(error.localizedDescription, privacy: .public)")

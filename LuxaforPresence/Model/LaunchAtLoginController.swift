@@ -5,6 +5,7 @@ enum LaunchAtLoginStatus: Equatable {
     case disabled
     case enabled
     case requiresApproval
+    case requiresInstallation
     case unavailable
 }
 
@@ -121,13 +122,14 @@ final class LaunchAtLoginController: LaunchAtLoginControlling {
     }
 
     var status: LaunchAtLoginStatus {
-        guard isPackagedApplication() else { return .unavailable }
+        guard isPackagedApplication() else { return .requiresInstallation }
         return service.status
     }
 
     @discardableResult
     func ensureEnabled() throws -> LaunchAtLoginStatus {
-        guard isPackagedApplication() else { return .unavailable }
+        guard isPackagedApplication() else { return .requiresInstallation }
+        guard service.status != .unavailable else { return .unavailable }
         if preferenceStore.userPreference == false {
             if service.status == .enabled || service.status == .requiresApproval {
                 try service.unregister()
@@ -143,7 +145,7 @@ final class LaunchAtLoginController: LaunchAtLoginControlling {
 
     @discardableResult
     func setEnabled(_ enabled: Bool) throws -> LaunchAtLoginStatus {
-        guard isPackagedApplication() else { return .unavailable }
+        guard isPackagedApplication() else { return .requiresInstallation }
         switch (enabled, service.status) {
         case (true, .disabled):
             preferenceStore.userPreference = true

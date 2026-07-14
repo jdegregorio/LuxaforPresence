@@ -4,6 +4,7 @@ import OSLog
 
 protocol LocalServiceRecoveryMonitoring: AnyObject {
     var onReconnect: (() -> Void)? { get set }
+    var onReachabilityChange: ((Bool) -> Void)? { get set }
     func start()
     func stop()
 }
@@ -112,6 +113,19 @@ final class LocalServiceRecoveryMonitor: LocalServiceRecoveryMonitoring {
         }
     }
 
+    var onReachabilityChange: ((Bool) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return reachabilityChangeHandler
+        }
+        set {
+            lock.lock()
+            reachabilityChangeHandler = newValue
+            lock.unlock()
+        }
+    }
+
     private let probe: LocalServiceReachabilityProbing
     private let timer: LocalServiceRecoveryTimerProtocol
     private let probeInterval: TimeInterval
@@ -121,6 +135,7 @@ final class LocalServiceRecoveryMonitor: LocalServiceRecoveryMonitoring {
         category: "LocalServiceRecovery"
     )
     private var reconnectHandler: (() -> Void)?
+    private var reachabilityChangeHandler: ((Bool) -> Void)?
     private var isRunning = false
     private var probeInFlight = false
     private var generation: UInt64 = 0
@@ -197,6 +212,9 @@ final class LocalServiceRecoveryMonitor: LocalServiceRecoveryMonitoring {
         let handler = previousReachability == false && reachable
             ? reconnectHandler
             : nil
+        let reachabilityHandler = previousReachability != reachable
+            ? reachabilityChangeHandler
+            : nil
         lock.unlock()
 
         if previousReachability != reachable {
@@ -205,6 +223,7 @@ final class LocalServiceRecoveryMonitor: LocalServiceRecoveryMonitoring {
         if handler != nil {
             logger.log("Local webhook listener recovered; requesting output reassertion")
         }
+        reachabilityHandler?(reachable)
         handler?()
     }
 }

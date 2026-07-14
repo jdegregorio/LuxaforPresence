@@ -159,6 +159,16 @@ final class LaunchAtLoginControllerTests: XCTestCase {
             preferenceStore: preferences
         )
 
+        XCTAssertEqual(try controller.ensureEnabled(), .requiresInstallation)
+        XCTAssertEqual(service.registerCount, 0)
+        XCTAssertNil(preferences.userPreference)
+    }
+
+    func test_installedProcessWithMissingService_isUnavailableNotUninstalled() throws {
+        let service = FakeLaunchAtLoginService(status: .unavailable)
+        let preferences = FakeLaunchAtLoginPreferences()
+        let controller = makeController(service: service, preferences: preferences)
+
         XCTAssertEqual(try controller.ensureEnabled(), .unavailable)
         XCTAssertEqual(service.registerCount, 0)
         XCTAssertNil(preferences.userPreference)
