@@ -11,6 +11,8 @@ final class MinimalPermissionsTests: XCTestCase {
             "com.jdegregorio.LuxaforPresence"
         )
         XCTAssertEqual(info["CFBundlePackageType"] as? String, "APPL")
+        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "1.7.0")
+        XCTAssertEqual(info["CFBundleVersion"] as? String, "5")
         XCTAssertEqual(info["LSMinimumSystemVersion"] as? String, "13.0")
         XCTAssertEqual(info["LSUIElement"] as? Bool, true)
         XCTAssertNotNil(info["NSMicrophoneUsageDescription"])

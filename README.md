@@ -263,7 +263,7 @@ Manual choices take precedence over automatic detection and stop voice sampling:
 - Voice Cooldown / Solid Red
 - Reset Voice Timer
 
-The bottom of the menu shows the version and build number read from the running app, for example **Version: 1.7.0 (Build 4)**.
+The bottom of the menu shows the version and build number read from the running app, for example **Version: 1.7.0 (Build 5)**.
 
 ## Privacy and permissions
 
