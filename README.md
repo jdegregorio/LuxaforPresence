@@ -93,6 +93,8 @@ If the Luxafor app uses a different port or token, update `localWebhookBaseUrl` 
 
 LuxaforPresence is a menu-bar-only app. It does not open a normal window or appear in the Dock. Look for its status icon on the right side of the macOS menu bar.
 
+The drag-to-Applications window appears only when you open the `.dmg` file, normally from **Downloads**. Clicking `LuxaforPresence.app` in Applications starts the already-installed menu-bar app; it does not show the installer again.
+
 ### Local development build warning
 
 A Developer ID-signed and notarized release should open normally. A locally built or ad-hoc-signed DMG is not notarized and macOS may block its first launch. For a build you created or received from a trusted source, Control-click the app in Finder and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway** after the blocked launch. Do not bypass Gatekeeper for an artifact you do not trust.
@@ -104,6 +106,8 @@ On first launch:
 1. Approve **Microphone** access. Audio is analyzed only while another application owns a microphone.
 2. Open the LuxaforPresence menu and check **Launch at Login**.
 3. If the menu says **Approval Required**, open **System Settings → General → Login Items** and approve LuxaforPresence.
+
+If the menu says **Unavailable** while the running app is already in Applications, the app is installed correctly but macOS cannot register that build automatically. This can occur with a locally built or ad-hoc-signed copy. Open **System Settings → General → Login Items**, click **+** under **Open at Login**, and add `/Applications/LuxaforPresence.app` manually. A Developer ID-signed and notarized release can register itself normally.
 
 If Microphone access was denied, enable LuxaforPresence later in **System Settings → Privacy & Security → Microphone**, then quit and reopen the app.
 
@@ -194,6 +198,7 @@ With Zoom closed and no other application using a microphone, open the menu and 
 ```text
 Status: Available / Off
 Output: Off
+Luxafor Webhook: Listening
 Zoom: Inactive
 External Microphone: Not In Use
 Voice Sampling: Idle
@@ -201,6 +206,8 @@ Voice Energy: Quiet
 ```
 
 The macOS microphone privacy indicator should not remain active because LuxaforPresence does not keep an idle audio stream open.
+
+If the menu instead says **Luxafor Webhook: Not Listening — Check Luxafor Settings**, open the official Luxafor app and enable **Incoming Local Webhooks** on the configured port before testing any color.
 
 ### Check the Luxafor connection first
 
@@ -309,6 +316,8 @@ Open **System Settings → Privacy & Security → Microphone**, enable LuxaforPr
 ### Launch at login requires approval
 
 Open **System Settings → General → Login Items** and approve LuxaforPresence. Launch-at-login registration is unavailable from a mounted DMG, App Translocation, or `swift run`; install and launch the app from `/Applications` first.
+
+If the installed app reports **Launch at Login (Unavailable…)**, click it to open Login Items and add `/Applications/LuxaforPresence.app` under **Open at Login**. The message no longer means the app is in the wrong folder; it means macOS did not expose automatic registration for that build.
 
 ### Collect diagnostics
 

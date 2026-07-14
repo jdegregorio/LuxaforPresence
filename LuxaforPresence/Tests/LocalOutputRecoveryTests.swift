@@ -24,6 +24,23 @@ final class LocalOutputRecoveryTests: XCTestCase {
         XCTAssertEqual(timer.scheduledIntervals, [5])
     }
 
+    func test_recoveryMonitor_reportsInitialReachabilityAndEdgesOnly() {
+        let probe = FakeReachabilityProbe()
+        let timer = FakeRecoveryTimer()
+        let monitor = LocalServiceRecoveryMonitor(probe: probe, timer: timer)
+        var observedReachability: [Bool] = []
+        monitor.onReachabilityChange = { observedReachability.append($0) }
+
+        monitor.start()
+        probe.completeNext(reachable: false)
+        timer.fire()
+        probe.completeNext(reachable: false)
+        timer.fire()
+        probe.completeNext(reachable: true)
+
+        XCTAssertEqual(observedReachability, [false, true])
+    }
+
     func test_recoveryMonitor_startIsIdempotentAndStoppedCompletionIsStale() {
         let probe = FakeReachabilityProbe()
         let timer = FakeRecoveryTimer()

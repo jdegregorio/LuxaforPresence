@@ -26,6 +26,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         XCTAssertEqual(diagnostics.statusTitle, "Status: Voice Recent (Flashing Red)")
         XCTAssertEqual(diagnostics.outputTitle, "Output: Flashing Red (750 ms)")
+        XCTAssertEqual(diagnostics.connectionTitle, "Luxafor Webhook: Checking…")
         XCTAssertEqual(diagnostics.zoomTitle, "Zoom: Active")
         XCTAssertEqual(diagnostics.microphoneTitle, "External Microphone: In Use")
         XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Active")
@@ -78,6 +79,43 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
         XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Unknown")
         XCTAssertEqual(diagnostics.voiceSignalTitle, "Voice Energy: Unknown")
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: Never")
+    }
+
+    func test_localWebhookReachability_rendersActionableConnectionState() {
+        let reachable = PresenceMenuDiagnostics(
+            state: .available,
+            output: .off,
+            snapshot: nil,
+            localWebhookReachable: true,
+            recentVoiceBlinkSeconds: 300,
+            voiceCooldownSeconds: 300,
+            now: Date()
+        )
+        let unavailable = PresenceMenuDiagnostics(
+            state: .available,
+            output: .off,
+            snapshot: nil,
+            localWebhookReachable: false,
+            recentVoiceBlinkSeconds: 300,
+            voiceCooldownSeconds: 300,
+            now: Date()
+        )
+        let remote = PresenceMenuDiagnostics(
+            state: .available,
+            output: .off,
+            snapshot: nil,
+            transportMode: .remote,
+            recentVoiceBlinkSeconds: 300,
+            voiceCooldownSeconds: 300,
+            now: Date()
+        )
+
+        XCTAssertEqual(reachable.connectionTitle, "Luxafor Webhook: Listening")
+        XCTAssertEqual(
+            unavailable.connectionTitle,
+            "Luxafor Webhook: Not Listening — Check Luxafor Settings"
+        )
+        XCTAssertEqual(remote.connectionTitle, "Luxafor Webhook: Remote")
     }
 
     func test_countdowns_clampAtExactTimelineBoundaries() {

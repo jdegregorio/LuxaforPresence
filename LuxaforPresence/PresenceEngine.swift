@@ -253,6 +253,7 @@ final class PresenceEngine {
     let config: Config
     var onStateChange: ((PresenceState) -> Void)?
     var onSnapshot: ((PresenceSnapshot) -> Void)?
+    var onLocalWebhookReachabilityChange: ((Bool) -> Void)?
     var onOutputChange: ((LightOutput) -> Void)? {
         didSet {
             outputController.onOutputChange = onOutputChange
@@ -332,6 +333,11 @@ final class PresenceEngine {
         self.localServiceRecoveryMonitor?.onReconnect = { [weak self] in
             self?.logger.log("Local Luxafor service recovered; reasserting desired output")
             self?.reassertOutput()
+        }
+        self.localServiceRecoveryMonitor?.onReachabilityChange = { [weak self] reachable in
+            self?.deliverOnMain { [weak self] in
+                self?.onLocalWebhookReachabilityChange?(reachable)
+            }
         }
         self.localOutputHeartbeat?.onHeartbeat = { [weak self] in
             self?.reassertOutput()

@@ -800,6 +800,20 @@ final class PresenceEngineTests: XCTestCase {
         )
     }
 
+    func test_localWebhookReachability_isExposedForMenuDiagnostics() {
+        let harness = PresenceEngineHarness()
+        let engine = harness.makeEngine()
+        var observedReachability: [Bool] = []
+        engine.onLocalWebhookReachabilityChange = {
+            observedReachability.append($0)
+        }
+
+        harness.localServiceRecoveryMonitor.reportReachability(false)
+        harness.localServiceRecoveryMonitor.reportReachability(true)
+
+        XCTAssertEqual(observedReachability, [false, true])
+    }
+
     private func tickAndWait(
         _ engine: PresenceEngine,
         file: StaticString = #filePath,
@@ -1101,6 +1115,7 @@ private final class FakeVoiceActivitySignal: VoiceActivitySignalProtocol {
 
 private final class FakeLocalServiceRecoveryMonitor: LocalServiceRecoveryMonitoring {
     var onReconnect: (() -> Void)?
+    var onReachabilityChange: ((Bool) -> Void)?
     private(set) var isRunning = false
     private(set) var startCount = 0
     private(set) var stopCount = 0
@@ -1119,6 +1134,10 @@ private final class FakeLocalServiceRecoveryMonitor: LocalServiceRecoveryMonitor
 
     func reconnect() {
         onReconnect?()
+    }
+
+    func reportReachability(_ reachable: Bool) {
+        onReachabilityChange?(reachable)
     }
 }
 
