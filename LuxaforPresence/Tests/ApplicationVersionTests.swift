@@ -5,10 +5,10 @@ final class ApplicationVersionTests: XCTestCase {
     func test_versionAndBuild_rendersCompleteMenuTitle() {
         let title = ApplicationVersion.menuTitle(infoDictionary: [
             "CFBundleShortVersionString": "1.7.0",
-            "CFBundleVersion": "4",
+            "CFBundleVersion": "5",
         ])
 
-        XCTAssertEqual(title, "Version: 1.7.0 (Build 4)")
+        XCTAssertEqual(title, "Version: 1.7.0 (Build 5)")
     }
 
     func test_missingBuild_rendersShortVersionOnly() {
@@ -29,9 +29,9 @@ final class ApplicationVersionTests: XCTestCase {
     func test_blankVersion_usesAvailableBuild() {
         let title = ApplicationVersion.menuTitle(infoDictionary: [
             "CFBundleShortVersionString": "  ",
-            "CFBundleVersion": " 4 ",
+            "CFBundleVersion": " 5 ",
         ])
 
-        XCTAssertEqual(title, "Build: 4")
+        XCTAssertEqual(title, "Build: 5")
     }
 }
