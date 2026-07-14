@@ -263,6 +263,8 @@ Manual choices take precedence over automatic detection and stop voice sampling:
 - Voice Cooldown / Solid Red
 - Reset Voice Timer
 
+The bottom of the menu shows the version and build number read from the running app, for example **Version: 1.7.0 (Build 4)**.
+
 ## Privacy and permissions
 
 The packaged app requests only **Microphone** permission. Permission alone does not keep an audio stream open: `AVAudioEngine` starts only while macOS reports that another application is using a microphone, and it stops when that external use ends, a manual override is selected, the Mac sleeps, or the app quits.

@@ -151,6 +151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: ","
         )
         menu.addItem(.separator())
+        let versionItem = NSMenuItem(
+            title: ApplicationVersion.menuTitle(),
+            action: nil,
+            keyEquivalent: ""
+        )
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
         addMenuItem(
             to: menu,
             title: "Quit",
