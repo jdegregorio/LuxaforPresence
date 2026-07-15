@@ -17,7 +17,7 @@
     <key>vadEnabled</key>
     <true/>
     <key>vadThreshold</key>
-    <real>0.02</real>
+    <real>0.001</real>
     <key>vadMinimumActiveMilliseconds</key>
     <integer>250</integer>
     <key>recentVoiceSeconds</key>

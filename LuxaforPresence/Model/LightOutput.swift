@@ -17,6 +17,8 @@ enum LightOutput: Equatable {
             return "Solid Yellow"
         case .solid(let color) where color == .red:
             return "Solid Red"
+        case .solid(let color) where color == .orange:
+            return "Solid Orange"
         case .solid(let color) where color == .purple:
             return "Solid Purple"
         case .solid:
@@ -57,9 +59,9 @@ extension PresenceState {
         case .zoomQuiet:
             return .solid(.yellow)
         case .voiceRecent:
-            return .solid(.purple)
+            return .solid(.red)
         case .voiceCooldown:
-            return .solid(.purple)
+            return .solid(.orange)
         }
     }
 }

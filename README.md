@@ -1,6 +1,6 @@
 # LuxaforPresence for macOS
 
-LuxaforPresence is a macOS menu-bar app that turns a Luxafor Flag or Flag 2 into a family office presence light. It watches Zoom, external microphone ownership, and local voice energy, then sends color changes to the official Luxafor desktop app through its local webhook.
+LuxaforPresence is a macOS menu-bar app that turns a Luxafor Flag or Flag 2 into a family office presence light. It watches Zoom, active microphone input in any application, and local input energy, then sends color changes to the official Luxafor desktop app through its local webhook.
 
 ## Required versus optional setup
 
@@ -13,7 +13,7 @@ The recommended setup uses only local transport. It does **not** require a Luxaf
 | Incoming Local Webhooks enabled | Required | Required for the recommended local transport. |
 | Matching webhook port and security token | Required | The defaults are port `5383` and token `luxafor`. No config file is needed when both apps use those values. |
 | LuxaforPresence in `/Applications` or `~/Applications` | Required | Needed for normal launching, permissions, and launch-at-login support. `/Applications` is recommended. |
-| Microphone permission | Required for voice detection | Without it, Zoom detection and manual controls still work, but voice energy cannot select the purple states. |
+| Microphone permission | Required for signal detection | Without it, Zoom detection and manual controls still work, but input energy cannot select the red and orange states. |
 | `~/.config/LuxaforPresence/config.plist` | Optional | Create it only to change a default port, token, timing, threshold, or transport mode. |
 | `remoteWebhookUserId` | Optional | Used only when `transportMode` is `remote`. Leave `YOUR_USER_ID_HERE` unchanged for local transport. |
 | Zoom | Optional | Needed only for automatic Zoom detection. Microphone-based presence and manual controls work without Zoom. |
@@ -42,10 +42,10 @@ LuxaforPresence depends on the official Luxafor desktop app. Complete these step
 4. Set the webhook port to `5383` and the security token to `luxafor`, or record your existing values so you can put the same values in LuxaforPresence.
 5. Open the LuxaforPresence DMG, drag **LuxaforPresence.app** onto **Applications**, eject the DMG, and launch the copy in `/Applications`.
 6. Approve Microphone access when macOS asks.
-7. Open the LuxaforPresence menu-bar icon and confirm it reports **External Microphone: Not In Use** and **Voice Sampling: Idle** while no other app is using the microphone.
+7. Open the LuxaforPresence menu-bar icon and confirm it reports **Other App Input: Not In Use** and **Signal Sampling: Idle** while no other app is using a microphone.
 8. Select a manual color override to confirm the Flag responds, then return the menu to **Automatic**.
 
-If the manual override does not change the Flag, work through [Troubleshooting](#troubleshooting) before testing Zoom or voice activity.
+If the manual override does not change the Flag, work through [Troubleshooting](#troubleshooting) before testing Zoom or input-signal activity.
 
 ## Requirements
 
@@ -86,7 +86,7 @@ If the Luxafor app uses a different port or token, update `localWebhookBaseUrl` 
 
 ## 2. Install LuxaforPresence
 
-1. Double-click `LuxaforPresence-1.8.0.dmg`.
+1. Double-click `LuxaforPresence-1.8.1.dmg`.
 2. Drag **LuxaforPresence.app** onto the **Applications** shortcut in the DMG.
 3. Eject the DMG.
 4. Open `/Applications` in Finder and launch **LuxaforPresence** from there.
@@ -99,11 +99,13 @@ The drag-to-Applications window appears only when you open the `.dmg` file, norm
 
 A Developer ID-signed and notarized release should open normally. A locally built or ad-hoc-signed DMG is not notarized and macOS may block its first launch. For a build you created or received from a trusted source, Control-click the app in Finder and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway** after the blocked launch. Do not bypass Gatekeeper for an artifact you do not trust.
 
+Replacing an ad-hoc-signed development build also changes its code identity, so macOS may ask for Microphone approval again even when an older LuxaforPresence entry still appears enabled. The menu reports **Microphone Permission: Waiting for Approval** until the current build is approved. This repeat prompt does not occur across properly Developer ID-signed releases from the same developer.
+
 ### Approve permissions and launch at login
 
 On first launch:
 
-1. Approve **Microphone** access. Audio is analyzed only while another application owns a microphone.
+1. Approve **Microphone** access. Audio is analyzed only while another process has active microphone input.
 2. Open the LuxaforPresence menu and check **Launch at Login**.
 3. If the menu says **Approval Required**, open **System Settings → General → Login Items** and approve LuxaforPresence.
 
@@ -150,7 +152,7 @@ The created file is readable only by the current user. The complete default conf
     <key>vadEnabled</key>
     <true/>
     <key>vadThreshold</key>
-    <real>0.02</real>
+    <real>0.001</real>
     <key>vadMinimumActiveMilliseconds</key>
     <integer>250</integer>
     <key>recentVoiceSeconds</key>
@@ -175,16 +177,16 @@ The created file is readable only by the current user. The complete default conf
 | `localWebhookBaseUrl` | `http://127.0.0.1:5383` | Luxafor local webhook address and port. The app appends `/color`. |
 | `localWebhookToken` | `luxafor` | Must match the Luxafor app's Incoming Webhook security token. |
 | `remoteWebhookUserId` | placeholder | Required only for `remote` transport. Find the ID in the Luxafor app's Webhook tab. Never commit a real ID. |
-| `pollInterval` | `2` seconds | How often Zoom and external microphone ownership are checked. Minimum `0.25`. |
+| `pollInterval` | `2` seconds | How often Zoom and other processes' active microphone input are checked. Minimum `0.25`. |
 | `detectZoom` | `true` | Enables process-based Zoom detection. |
-| `vadEnabled` | `true` | Enables local voice-energy analysis during external microphone use. |
-| `vadThreshold` | `0.02` | RMS energy threshold. Valid range is greater than `0` through `1`. |
-| `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required to qualify voice activity. Minimum `250`. |
-| `recentVoiceSeconds` | `300` | Duration of the recent-voice state. The legacy `recentVoiceBlinkSeconds` key is still accepted. |
-| `voiceCooldownSeconds` | `300` | Duration of the cooldown state after recent voice. Both voice states use solid purple. |
+| `vadEnabled` | `true` | Enables local input-energy analysis while any other process has active microphone input. |
+| `vadThreshold` | `0.001` | RMS threshold separating digital silence from a real input signal. Valid range is greater than `0` through `1`. Raise it if room noise qualifies too easily. |
+| `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required to qualify an input signal. Minimum `250`. |
+| `recentVoiceSeconds` | `300` | Duration of the recent-signal red state. The legacy `recentVoiceBlinkSeconds` key is still accepted. |
+| `voiceCooldownSeconds` | `300` | Duration of the orange cooldown after the recent-signal state. |
 | `localOutputHeartbeatEnabled` | `false` | Advanced recovery option that periodically reasserts output. Keep disabled for the Luxafor desktop listener's best responsiveness. |
 | `localOutputReassertSeconds` | `30` | Heartbeat interval when `localOutputHeartbeatEnabled` is enabled. Minimum `5`. |
-| `outputBrightness` | `0.7` | Scales purple and yellow RGB intensity per request. Use a value from `0` through `1`; `0.7` is 70% of full output. |
+| `outputBrightness` | `0.7` | Scales red, orange, and yellow RGB intensity per request. Use a value from `0` through `1`; `0.7` is 70% of full output. |
 
 Invalid numeric values are rejected at startup and replaced with safe defaults. Local plain-HTTP URLs are accepted only for loopback hosts such as `127.0.0.1` and `localhost`.
 
@@ -203,9 +205,10 @@ Status: Available / Off
 Output: Off
 Luxafor Webhook: Listening
 Zoom: Inactive
-External Microphone: Not In Use
-Voice Sampling: Idle
-Voice Energy: Quiet
+Microphone Permission: Authorized
+Other App Input: Not In Use
+Signal Sampling: Idle
+Input Signal: Quiet
 ```
 
 The macOS microphone privacy indicator should not remain active because LuxaforPresence does not keep an idle audio stream open.
@@ -217,11 +220,12 @@ If the menu instead says **Luxafor Webhook: Not Listening — Check Luxafor Sett
 Use the menu's manual overrides before testing Zoom:
 
 1. Select **Zoom Quiet / Yellow**. The Flag should become solid yellow.
-2. Select **Voice Recent / Solid Purple**. The Flag should become solid purple.
-3. Select **Available / Off**. The Flag should turn off.
-4. Select **Automatic** to restore signal-based behavior.
+2. Select **Signal Recent / Solid Red**. The Flag should become solid red.
+3. Select **Signal Cooldown / Solid Orange**. The Flag should become solid orange.
+4. Select **Available / Off**. The Flag should turn off.
+5. Select **Automatic** to restore signal-based behavior.
 
-If these controls do not affect the Flag, the problem is the Luxafor desktop app, device connection, webhook port, or token—not Zoom or voice detection.
+If these controls do not affect the Flag, the problem is the Luxafor desktop app, device connection, webhook port, or token—not Zoom or input-signal detection.
 
 You can test the default local webhook directly from Terminal. This command turns the Flag green when the Luxafor app uses the default port and token:
 
@@ -236,40 +240,42 @@ curl --fail-with-body \
 
 Use the actual port and token if you changed them. Treat a custom token like a password and do not paste it into logs, issues, or screenshots.
 
-### Check microphone-gated sampling
+### Check microphone-gated signal sampling
 
-1. Leave Zoom closed and confirm **Voice Sampling: Idle**.
-2. Start an app that actively opens the microphone, such as a Zoom meeting with microphone input enabled.
-3. Within one polling interval, expect **External Microphone: In Use** and **Voice Sampling: Active**. The macOS microphone privacy indicator is expected while sampling is active.
-4. Speak normally for at least 250 milliseconds. Expect **Voice Energy: Detected** and then solid purple.
-5. Stop the meeting or close the microphone-using app. Expect **Voice Sampling: Idle** and the light to turn off once both Zoom and external microphone contexts have ended. macOS may briefly retain its privacy indicator after capture stops.
+1. Leave Zoom closed and confirm **Signal Sampling: Idle**.
+2. Start any app that actively receives microphone input, such as Zoom, Teams, Slack, FaceTime, a browser call, dictation, or recording software.
+3. Within one polling interval, expect **Other App Input: In Use** and **Signal Sampling: Active**. The macOS microphone privacy indicator is expected while sampling is active.
+4. Produce a non-silent input signal for at least 250 milliseconds. Expect **Input Signal: Detected** and solid red.
+5. While the communication context remains active, the light becomes orange after the recent-signal period and yellow after cooldown when Zoom is still active.
+6. Stop the microphone-using app. Expect **Signal Sampling: Idle** and the light to turn off once both Zoom and other-app input contexts have ended. macOS may briefly retain its privacy indicator after capture stops.
 
-LuxaforPresence measures input energy; it cannot prove that another application's mute control is enabled. Quiet may also mean a quiet room, a different input device, or application-level audio processing.
+LuxaforPresence measures RMS input energy; it does not classify speech or inspect audio content. A very quiet room, hardware mute, application-level processing, or a threshold set too high can all appear silent.
 
 ## Presence behavior
 
 | Light | Meaning |
 | --- | --- |
-| Off | No active Zoom meeting or qualifying voice activity in an active microphone context |
-| Solid yellow | Zoom is active, but no qualifying voice signal occurred in the last ten minutes |
-| Solid purple | Qualifying microphone energy occurred in the last ten minutes, including the cooldown period |
+| Off | No active Zoom meeting or qualifying signal in an active microphone context |
+| Solid yellow | Zoom is active without a recent or cooling-down input signal |
+| Solid red | A qualifying non-silent input signal occurred within `recentVoiceSeconds` |
+| Solid orange | The recent-signal period ended and `voiceCooldownSeconds` is still running |
 
-The purple timeline continues while either Zoom or external microphone use keeps the communication context active. When both end, the light turns off immediately. A new qualifying signal restarts the recent-voice period before cooldown.
+The red-to-orange timeline continues while either Zoom or another application's active microphone input keeps the communication context active. When both end, the light turns off immediately. A new qualifying signal restarts the red recent-signal period.
 
-Manual choices take precedence over automatic detection and stop voice sampling:
+Manual choices take precedence over automatic detection and stop signal sampling:
 
 - Automatic
 - Available / Off
 - Zoom Quiet / Yellow
-- Voice Recent / Solid Purple
-- Voice Cooldown / Solid Purple
-- Reset Voice Timer
+- Signal Recent / Solid Red
+- Signal Cooldown / Solid Orange
+- Reset Signal Timer
 
-The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.8.0**.
+The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.8.1**.
 
 ## Privacy and permissions
 
-The packaged app requests only **Microphone** permission. Permission alone does not keep an audio stream open: `AVAudioEngine` starts only while macOS reports that another application is using a microphone, and it stops when that external use ends, a manual override is selected, the Mac sleeps, or the app quits.
+The packaged app requests only **Microphone** permission. Permission alone does not keep an audio stream open: `AVAudioEngine` starts only while Core Audio reports active input in another process, and it stops when that external use ends, a manual override is selected, the Mac sleeps, or the app quits. The app excludes its own audio process so sampling cannot keep itself active.
 
 While active, LuxaforPresence calculates RMS energy from short in-memory buffers. It never records, stores, transmits, or transcribes audio, and it never logs individual audio samples. Zoom detection is process-based (`CptHost`) and does not require Accessibility, Calendar, Camera, browser automation, or Apple Events permissions.
 
@@ -305,14 +311,21 @@ This is expected. LuxaforPresence is a menu-bar app with no Dock icon. Look on t
 
 ### Microphone permission is denied
 
-Open **System Settings → Privacy & Security → Microphone**, enable LuxaforPresence, then quit and relaunch the installed app. If LuxaforPresence is not listed, launch the installed copy and trigger the permission prompt again.
+If the menu says **Microphone Permission: Denied — Open Privacy Settings**, open **System Settings → Privacy & Security → Microphone**, enable LuxaforPresence, then quit and relaunch the installed app. If an ad-hoc replacement says **Waiting for Approval** while an older entry appears enabled, toggle that entry off and on, or run `tccutil reset Microphone com.jdegregorio.LuxaforPresence`, relaunch the installed app, and approve the new prompt. If LuxaforPresence is not listed, launch the installed copy to trigger the prompt.
 
 ### The microphone privacy indicator stays on
 
-- Open the menu and check **External Microphone** and **Voice Sampling**.
-- If **External Microphone: In Use**, another process still owns an input device. Close Zoom, recording, dictation, meeting, and browser-call applications.
-- If **Voice Sampling: Idle**, LuxaforPresence has stopped its audio engine; macOS may briefly retain the indicator.
+- Open the menu and check **Other App Input** and **Signal Sampling**.
+- If **Other App Input: In Use**, another process still has active input I/O. Close Zoom, recording, dictation, meeting, and browser-call applications.
+- If **Signal Sampling: Idle**, LuxaforPresence has stopped its audio engine; macOS may briefly retain the indicator.
 - Set `vadEnabled` to `false` and restart to disable LuxaforPresence audio analysis entirely.
+
+### Another app uses the microphone but signal sampling stays idle
+
+- Confirm the microphone-using app is actively receiving input, not merely open.
+- Return LuxaforPresence to **Automatic**; manual overrides intentionally stop sampling.
+- Stream diagnostics and look for `External input activity changed active=true source=coreAudioProcesses`.
+- If sampling is active but **Input Signal** remains quiet, lower `vadThreshold`; `0.001` is the bundled digital-silence-oriented default.
 
 ### Zoom is active but the light stays off
 
@@ -366,7 +379,7 @@ CLANG_MODULE_CACHE_PATH=$PWD/.cache swift build --disable-sandbox
 Create a release app and local DMG:
 
 ```bash
-./scripts/package-dmg.sh -c release -n LuxaforPresence-1.8.0
+./scripts/package-dmg.sh -c release -n LuxaforPresence-1.8.1
 ```
 
 Outputs are written under `dist/`. The packaging script creates an ad-hoc-signed development artifact with the microphone entitlement. For trusted distribution, follow [DIST.md](DIST.md) to Developer ID-sign, notarize, staple, and verify the app and DMG.

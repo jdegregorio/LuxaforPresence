@@ -8,6 +8,7 @@ struct LuxaforColor: Equatable, Hashable {
 
     static let off = LuxaforColor(red: 0, green: 0, blue: 0)
     static let red = LuxaforColor(red: 255, green: 0, blue: 0)
+    static let orange = LuxaforColor(red: 255, green: 140, blue: 0)
     static let yellow = LuxaforColor(red: 255, green: 255, blue: 0)
     static let purple = LuxaforColor(red: 139, green: 92, blue: 246)
 

@@ -4,6 +4,12 @@ All notable changes to LuxaforPresence will be documented here.
 
 ## Unreleased
 
+- Detect microphone input activity for any application through Core Audio's per-process input state, with an AVFoundation compatibility fallback.
+- Treat sustained non-silent input energy as activity without classifying speech or inspecting audio content, using a lower `0.001` default RMS threshold.
+- Show microphone authorization explicitly in menu diagnostics and structured logs.
+- Use solid red for recent signal, solid orange for cooldown, and solid yellow for a quiet Zoom session.
+- Package the microphone detection fix as version `1.8.1`.
+
 ## [1.8.0] – 2026-07-14
 
 - Replace distracting recent-voice flashing and the red cooldown with a steady purple light.
