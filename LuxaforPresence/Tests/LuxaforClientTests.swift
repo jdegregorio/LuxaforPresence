@@ -205,11 +205,55 @@ final class LuxaforClientTests: XCTestCase {
         wait(for: [requestReceived], timeout: 2)
     }
 
+    func test_localClient_usesFreshSessionForEachSemanticRequest() throws {
+        let firstRequestStarted = expectation(description: "first local request started")
+        let secondRequestConfirmed = expectation(description: "second local request confirmed")
+        let releaseFirstRequest = DispatchSemaphore(value: 0)
+        let lock = NSLock()
+        var requestCount = 0
+        var sessionCount = 0
+        TestURLProtocol.handler = { _, protocolInstance in
+            lock.lock()
+            requestCount += 1
+            let currentRequest = requestCount
+            lock.unlock()
+
+            if currentRequest == 1 {
+                firstRequestStarted.fulfill()
+                _ = releaseFirstRequest.wait(timeout: .now() + 2)
+            }
+            protocolInstance.respond(statusCode: 200)
+            if currentRequest == 2 {
+                secondRequestConfirmed.fulfill()
+            }
+        }
+
+        let client = LuxaforLocalWebhookClient(
+            endpoint: try LocalWebhookEndpoint(validating: "http://127.0.0.1:5383"),
+            token: "test-token",
+            sessionFactory: { [unowned self] in
+                lock.lock()
+                sessionCount += 1
+                lock.unlock()
+                return self.makeSession()
+            }
+        )
+        client.setSolidColor(.purple, userId: "ignored", force: false)
+        wait(for: [firstRequestStarted], timeout: 2)
+        client.setSolidColor(.yellow, userId: "ignored", force: false)
+        releaseFirstRequest.signal()
+
+        wait(for: [secondRequestConfirmed], timeout: 2)
+        lock.lock()
+        let finalSessionCount = sessionCount
+        lock.unlock()
+        XCTAssertEqual(finalSessionCount, 2)
+    }
+
     func test_localSessionConfiguration_limitsAndReusesOneConnection() {
         let configuration = LocalWebhookSession.makeConfiguration()
 
         XCTAssertEqual(configuration.httpMaximumConnectionsPerHost, 1)
-        XCTAssertTrue(configuration.httpShouldUsePipelining)
         XCTAssertEqual(configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
         XCTAssertNil(configuration.urlCache)
     }

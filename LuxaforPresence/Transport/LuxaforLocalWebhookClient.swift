@@ -11,7 +11,20 @@ final class LuxaforLocalWebhookClient: LuxaforClientProtocol {
     convenience init(
         baseURL: String,
         token: String,
-        session: URLSession = LocalWebhookSession.make(),
+        outputBrightness: Double = 1
+    ) throws {
+        let endpoint = try LocalWebhookEndpoint(validating: baseURL)
+        self.init(
+            endpoint: endpoint,
+            token: token,
+            outputBrightness: outputBrightness
+        )
+    }
+
+    convenience init(
+        baseURL: String,
+        token: String,
+        session: URLSession,
         outputBrightness: Double = 1
     ) throws {
         let endpoint = try LocalWebhookEndpoint(validating: baseURL)
@@ -23,10 +36,38 @@ final class LuxaforLocalWebhookClient: LuxaforClientProtocol {
         )
     }
 
+    convenience init(
+        endpoint: LocalWebhookEndpoint,
+        token: String,
+        outputBrightness: Double = 1
+    ) {
+        self.init(
+            endpoint: endpoint,
+            token: token,
+            sessionFactory: LocalWebhookSession.make,
+            outputBrightness: outputBrightness
+        )
+    }
+
     init(
         endpoint: LocalWebhookEndpoint,
         token: String,
-        session: URLSession = LocalWebhookSession.make(),
+        sessionFactory: @escaping () -> URLSession,
+        outputBrightness: Double = 1
+    ) {
+        self.endpoint = endpoint
+        self.token = token
+        self.sender = LatestWinsRequestSender(
+            sessionFactory: sessionFactory,
+            logger: logger
+        )
+        self.outputBrightness = outputBrightness
+    }
+
+    init(
+        endpoint: LocalWebhookEndpoint,
+        token: String,
+        session: URLSession,
         outputBrightness: Double = 1
     ) {
         self.endpoint = endpoint

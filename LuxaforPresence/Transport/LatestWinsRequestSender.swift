@@ -12,7 +12,8 @@ final class LatestWinsRequestSender {
         let requestFactory: RequestFactory
     }
 
-    private let session: URLSession
+    private let sessionFactory: () -> URLSession
+    private let invalidateSessionAfterRequest: Bool
     private let logger: Logger
     private let queue = DispatchQueue(label: "com.jdegregorio.LuxaforPresence.webhook-delivery")
 
@@ -20,10 +21,21 @@ final class LatestWinsRequestSender {
     private var desiredRequest: DesiredRequest?
     private var confirmedIdentifier: String?
     private var inFlightTask: URLSessionDataTask?
+    private var inFlightSession: URLSession?
     private var retryScheduled = false
 
     init(session: URLSession, logger: Logger) {
-        self.session = session
+        self.sessionFactory = { session }
+        self.invalidateSessionAfterRequest = false
+        self.logger = logger
+    }
+
+    init(
+        sessionFactory: @escaping () -> URLSession,
+        logger: Logger
+    ) {
+        self.sessionFactory = sessionFactory
+        self.invalidateSessionAfterRequest = true
         self.logger = logger
     }
 
@@ -87,9 +99,16 @@ final class LatestWinsRequestSender {
         logger.debug(
             "Sending latest webhook state \(actionDescription, privacy: .public), attempt \(attempt, privacy: .public)"
         )
+        let session = sessionFactory()
+        let shouldInvalidateSession = invalidateSessionAfterRequest
+        inFlightSession = session
         let task = session.dataTask(with: request) { [weak self] _, response, error in
+            if shouldInvalidateSession {
+                session.finishTasksAndInvalidate()
+            }
             guard let self else { return }
             self.queue.async {
+                self.inFlightSession = nil
                 self.handleResult(
                     generation: generation,
                     identifier: identifier,
