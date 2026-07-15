@@ -10,7 +10,7 @@ final class PresenceEngine {
     struct Config {
         static let defaultPollInterval: TimeInterval = 2.0
         static let minimumPollInterval: TimeInterval = 0.25
-        static let defaultVadThreshold = 0.02
+        static let defaultVadThreshold = 0.001
         static let defaultRecentVoiceSeconds: TimeInterval = 300
         static let defaultVoiceCooldownSeconds: TimeInterval = 300
         static let defaultVadMinimumActiveMilliseconds: TimeInterval = 250
@@ -270,6 +270,10 @@ final class PresenceEngine {
 
     var desiredOutput: LightOutput? {
         outputController.desiredOutput
+    }
+
+    var microphoneAuthorizationState: MicrophoneAuthorizationState {
+        config.vadEnabled ? voiceActivity.authorizationState : .disabled
     }
 
     private let micCam: MicCamSignalProtocol

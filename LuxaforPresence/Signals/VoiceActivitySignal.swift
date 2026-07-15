@@ -5,6 +5,7 @@ import OSLog
 protocol VoiceActivitySignalProtocol: AnyObject {
     var onQualifyingActivity: ((Date) -> Void)? { get set }
     var isCapturing: Bool { get }
+    var authorizationState: MicrophoneAuthorizationState { get }
     func requestAccessIfNeeded()
     func setCaptureContextActive(_ active: Bool)
     func isVoiceActive() -> Bool
@@ -100,7 +101,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     private var sampleGeneration: UInt64 = 0
 
     init(
-        threshold: Double = 0.02,
+        threshold: Double = 0.001,
         minimumActiveDuration: TimeInterval = 0.25,
         engine: VoiceActivityAudioEngine = AVAudioVoiceActivityEngine(),
         retryScheduler: VoiceActivityRetryScheduling = MainQueueVoiceActivityRetryScheduler(),
@@ -161,6 +162,21 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         return lifecycleState == .started
     }
 
+    var authorizationState: MicrophoneAuthorizationState {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return .authorized
+        case .denied:
+            return .denied
+        case .restricted:
+            return .restricted
+        case .notDetermined:
+            return .notDetermined
+        @unknown default:
+            return .unknown
+        }
+    }
+
     var latestRMS: Double? {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -175,6 +191,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
 
     func requestAccessIfNeeded() {
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        logger.log("Microphone authorization state=\(self.authorizationState.rawValue, privacy: .public)")
         switch status {
         case .authorized:
             markAuthorizedAndStart()

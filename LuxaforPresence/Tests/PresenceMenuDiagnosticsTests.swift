@@ -2,7 +2,7 @@ import XCTest
 @testable import LuxaforPresence
 
 final class PresenceMenuDiagnosticsTests: XCTestCase {
-    func test_voiceRecent_rendersSignalsLastVoiceAndPurpleOutput() {
+    func test_voiceRecent_rendersSignalsLastSignalAndRedOutput() {
         let now = Date(timeIntervalSinceReferenceDate: 10_000)
         let snapshot = PresenceSnapshot(
             state: .voiceRecent,
@@ -17,22 +17,24 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         let diagnostics = PresenceMenuDiagnostics(
             state: .voiceRecent,
-            output: .solid(.purple),
+            output: .solid(.red),
             snapshot: snapshot,
+            microphoneAuthorizationState: .authorized,
             recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: now
         )
 
-        XCTAssertEqual(diagnostics.statusTitle, "Status: Voice Recent (Purple)")
-        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Purple")
+        XCTAssertEqual(diagnostics.statusTitle, "Status: Signal Recent (Red)")
+        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Red")
         XCTAssertEqual(diagnostics.connectionTitle, "Luxafor Webhook: Checking…")
         XCTAssertEqual(diagnostics.zoomTitle, "Zoom: Active")
-        XCTAssertEqual(diagnostics.microphoneTitle, "External Microphone: In Use")
-        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Active")
-        XCTAssertEqual(diagnostics.voiceSignalTitle, "Voice Energy: Detected")
-        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: 12s ago")
-        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Voice Remaining: 4m 48s")
+        XCTAssertEqual(diagnostics.microphonePermissionTitle, "Microphone Permission: Authorized")
+        XCTAssertEqual(diagnostics.microphoneTitle, "Other App Input: In Use")
+        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Signal Sampling: Active")
+        XCTAssertEqual(diagnostics.voiceSignalTitle, "Input Signal: Detected")
+        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Signal: 12s ago")
+        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Signal Remaining: 4m 48s")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: —")
     }
 
@@ -51,16 +53,16 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         let diagnostics = PresenceMenuDiagnostics(
             state: .voiceCooldown,
-            output: .solid(.purple),
+            output: .solid(.orange),
             snapshot: snapshot,
             recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: now
         )
 
-        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Purple")
-        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: 7m ago")
-        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Voice Remaining: —")
+        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Orange")
+        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Signal: 7m ago")
+        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Signal Remaining: —")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: 3m")
     }
 
@@ -75,10 +77,28 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
         )
 
         XCTAssertEqual(diagnostics.zoomTitle, "Zoom: Unknown")
-        XCTAssertEqual(diagnostics.microphoneTitle, "External Microphone: Unknown")
-        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Unknown")
-        XCTAssertEqual(diagnostics.voiceSignalTitle, "Voice Energy: Unknown")
-        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: Never")
+        XCTAssertEqual(diagnostics.microphonePermissionTitle, "Microphone Permission: Unknown")
+        XCTAssertEqual(diagnostics.microphoneTitle, "Other App Input: Unknown")
+        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Signal Sampling: Unknown")
+        XCTAssertEqual(diagnostics.voiceSignalTitle, "Input Signal: Unknown")
+        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Signal: Never")
+    }
+
+    func test_deniedMicrophonePermission_rendersActionableStatus() {
+        let diagnostics = PresenceMenuDiagnostics(
+            state: .available,
+            output: .off,
+            snapshot: nil,
+            microphoneAuthorizationState: .denied,
+            recentVoiceSeconds: 300,
+            voiceCooldownSeconds: 300,
+            now: Date()
+        )
+
+        XCTAssertEqual(
+            diagnostics.microphonePermissionTitle,
+            "Microphone Permission: Denied — Open Privacy Settings"
+        )
     }
 
     func test_localWebhookReachability_rendersActionableConnectionState() {
@@ -143,7 +163,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         let recent = PresenceMenuDiagnostics(
             state: .voiceRecent,
-            output: .solid(.purple),
+            output: .solid(.red),
             snapshot: recentSnapshot,
             recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
@@ -151,14 +171,14 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
         )
         let cooldown = PresenceMenuDiagnostics(
             state: .voiceCooldown,
-            output: .solid(.purple),
+            output: .solid(.orange),
             snapshot: cooldownSnapshot,
             recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: now
         )
 
-        XCTAssertEqual(recent.recentVoiceRemainingTitle, "Recent Voice Remaining: 0s")
+        XCTAssertEqual(recent.recentVoiceRemainingTitle, "Recent Signal Remaining: 0s")
         XCTAssertEqual(cooldown.cooldownRemainingTitle, "Cooldown Remaining: 0s")
     }
 
@@ -177,7 +197,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         let diagnostics = PresenceMenuDiagnostics(
             state: .voiceRecent,
-            output: .solid(.purple),
+            output: .solid(.red),
             snapshot: snapshot,
             recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
@@ -185,16 +205,16 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: 12s ago")
-        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Idle")
-        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Voice Remaining: —")
+        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Signal: 12s ago")
+        XCTAssertEqual(diagnostics.voiceSamplingTitle, "Signal Sampling: Idle")
+        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Signal Remaining: —")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: —")
     }
 
     func test_manualResetSnapshot_showsClearedVoiceDiagnostics() {
         let diagnostics = PresenceMenuDiagnostics(
             state: .voiceCooldown,
-            output: .solid(.purple),
+            output: .solid(.orange),
             snapshot: nil,
             recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
@@ -202,8 +222,8 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             now: Date()
         )
 
-        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: Never")
-        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Voice Remaining: —")
+        XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Signal: Never")
+        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Signal Remaining: —")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: —")
     }
 }

@@ -88,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             output: nil,
             snapshot: nil,
             transportMode: engine.config.transportMode,
+            microphoneAuthorizationState: engine.microphoneAuthorizationState,
             recentVoiceSeconds: engine.config.recentVoiceSeconds,
             voiceCooldownSeconds: engine.config.voiceCooldownSeconds,
             now: Date()
@@ -119,19 +120,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         voiceRecentItem = addMenuItem(
             to: menu,
-            title: "Voice Recent / Solid Purple",
+            title: "Signal Recent / Solid Red",
             action: #selector(forceVoiceRecent),
             keyEquivalent: "r"
         )
         voiceCooldownItem = addMenuItem(
             to: menu,
-            title: "Voice Cooldown / Solid Purple",
+            title: "Signal Cooldown / Solid Orange",
             action: #selector(forceVoiceCooldown),
             keyEquivalent: "c"
         )
         addMenuItem(
             to: menu,
-            title: "Reset Voice Timer",
+            title: "Reset Signal Timer",
             action: #selector(resetVoiceTimer),
             keyEquivalent: ""
         )
@@ -206,6 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             snapshot: latestSnapshot,
             transportMode: engine.config.transportMode,
             localWebhookReachable: localWebhookReachable,
+            microphoneAuthorizationState: engine.microphoneAuthorizationState,
             recentVoiceSeconds: engine.config.recentVoiceSeconds,
             voiceCooldownSeconds: engine.config.voiceCooldownSeconds,
             manualOverride: manualState,

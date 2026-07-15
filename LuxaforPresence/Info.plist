@@ -9,14 +9,14 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleVersion</key>
-	<string>1.8.0</string>
+	<string>1.8.1</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.8.0</string>
+	<string>1.8.1</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>While another app is using the microphone, audio energy is analyzed locally for voice activity. Audio is never recorded, stored, or transmitted.</string>
+	<string>While another app is using a microphone, input energy is analyzed locally for a non-silent signal. Audio is never recorded, stored, or transmitted.</string>
 </dict>
 </plist>

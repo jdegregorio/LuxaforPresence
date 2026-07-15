@@ -17,10 +17,16 @@ final class LuxaforColorTests: XCTestCase {
         XCTAssertEqual(LuxaforColor.red.applyingBrightness(.infinity), .red)
     }
 
-    func test_voiceStates_useTheSameSolidPurpleOutput() {
-        XCTAssertEqual(PresenceState.voiceRecent.lightOutput, .solid(.purple))
-        XCTAssertEqual(PresenceState.voiceCooldown.lightOutput, .solid(.purple))
-        XCTAssertEqual(PresenceState.voiceRecent.lightOutput.displayName, "Solid Purple")
-        XCTAssertEqual(LuxaforColor.purple.hex, "8B5CF6")
+    func test_signalTimeline_usesDistinctSolidColors() {
+        XCTAssertEqual(PresenceState.voiceRecent.lightOutput, .solid(.red))
+        XCTAssertEqual(PresenceState.voiceCooldown.lightOutput, .solid(.orange))
+        XCTAssertEqual(PresenceState.zoomQuiet.lightOutput, .solid(.yellow))
+        XCTAssertEqual(PresenceState.voiceRecent.lightOutput.displayName, "Solid Red")
+        XCTAssertEqual(PresenceState.voiceCooldown.lightOutput.displayName, "Solid Orange")
+        XCTAssertEqual(LuxaforColor.orange.hex, "FF8C00")
+        XCTAssertEqual(
+            LuxaforColor.orange.applyingBrightness(0.7),
+            LuxaforColor(red: 179, green: 98, blue: 0)
+        )
     }
 }

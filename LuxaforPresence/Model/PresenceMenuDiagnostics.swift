@@ -5,6 +5,7 @@ struct PresenceMenuDiagnostics: Equatable {
     let outputTitle: String
     let connectionTitle: String
     let zoomTitle: String
+    let microphonePermissionTitle: String
     let microphoneTitle: String
     let voiceSamplingTitle: String
     let voiceSignalTitle: String
@@ -18,6 +19,7 @@ struct PresenceMenuDiagnostics: Equatable {
         snapshot: PresenceSnapshot?,
         transportMode: TransportMode = .local,
         localWebhookReachable: Bool? = nil,
+        microphoneAuthorizationState: MicrophoneAuthorizationState = .unknown,
         recentVoiceSeconds: TimeInterval,
         voiceCooldownSeconds: TimeInterval,
         manualOverride: PresenceState? = nil,
@@ -39,27 +41,28 @@ struct PresenceMenuDiagnostics: Equatable {
             connectionTitle = "Luxafor Webhook: Remote"
         }
         zoomTitle = "Zoom: \(snapshot.map { $0.zoomActive ? "Active" : "Inactive" } ?? "Unknown")"
-        microphoneTitle = "External Microphone: \(snapshot.map { $0.microphoneActive ? "In Use" : "Not In Use" } ?? "Unknown")"
+        microphonePermissionTitle = "Microphone Permission: \(microphoneAuthorizationState.displayName)"
+        microphoneTitle = "Other App Input: \(snapshot.map { $0.microphoneActive ? "In Use" : "Not In Use" } ?? "Unknown")"
         if manualOverride != nil {
-            voiceSamplingTitle = "Voice Sampling: Idle"
+            voiceSamplingTitle = "Signal Sampling: Idle"
         } else {
-            voiceSamplingTitle = "Voice Sampling: \(snapshot.map { $0.voiceSamplingActive ? "Active" : "Idle" } ?? "Unknown")"
+            voiceSamplingTitle = "Signal Sampling: \(snapshot.map { $0.voiceSamplingActive ? "Active" : "Idle" } ?? "Unknown")"
         }
-        voiceSignalTitle = "Voice Energy: \(snapshot.map { $0.voiceCurrentlyAboveThreshold ? "Detected" : "Quiet" } ?? "Unknown")"
+        voiceSignalTitle = "Input Signal: \(snapshot.map { $0.voiceCurrentlyAboveThreshold ? "Detected" : "Quiet" } ?? "Unknown")"
 
         let elapsed = snapshot?.lastVoiceActivityDate.map {
             max(0, now.timeIntervalSince($0))
         }
         if let elapsed {
-            lastVoiceTitle = "Last Voice: \(Self.formatElapsed(elapsed)) ago"
+            lastVoiceTitle = "Last Signal: \(Self.formatElapsed(elapsed)) ago"
         } else {
-            lastVoiceTitle = "Last Voice: Never"
+            lastVoiceTitle = "Last Signal: Never"
         }
 
         if manualOverride == nil, state == .voiceRecent, let elapsed {
-            recentVoiceRemainingTitle = "Recent Voice Remaining: \(Self.formatRemaining(recentVoiceSeconds - elapsed))"
+            recentVoiceRemainingTitle = "Recent Signal Remaining: \(Self.formatRemaining(recentVoiceSeconds - elapsed))"
         } else {
-            recentVoiceRemainingTitle = "Recent Voice Remaining: —"
+            recentVoiceRemainingTitle = "Recent Signal Remaining: —"
         }
 
         if manualOverride == nil, state == .voiceCooldown, let elapsed {
@@ -76,6 +79,7 @@ struct PresenceMenuDiagnostics: Equatable {
             outputTitle,
             connectionTitle,
             zoomTitle,
+            microphonePermissionTitle,
             microphoneTitle,
             voiceSamplingTitle,
             voiceSignalTitle,

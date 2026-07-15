@@ -76,7 +76,7 @@ final class ResourceBundleTests: XCTestCase {
         let config = PresenceEngine.Config(userConfigURLs: [])
 
         XCTAssertTrue(config.detectZoom)
-        XCTAssertEqual(config.vadThreshold, 0.02)
+        XCTAssertEqual(config.vadThreshold, 0.001)
         XCTAssertEqual(config.vadMinimumActiveMilliseconds, 250)
         XCTAssertEqual(config.recentVoiceSeconds, 300)
         XCTAssertEqual(config.voiceCooldownSeconds, 300)
