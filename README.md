@@ -297,7 +297,7 @@ The user configuration in `~/.config/LuxaforPresence/config.plist` is outside th
 
 ### Color changes are delayed after upgrading from 1.7.0
 
-Quit and reopen the official Luxafor desktop app once. Version 1.7.0 could leave many short-lived local-webhook connections retained in that app's listener; restarting clears them. Version 1.8.0 removes per-phase flashing traffic, keeps one health-check connection, and disables periodic output reassertion by default.
+Quit and reopen the official Luxafor desktop app once. Version 1.7.0 could leave many short-lived local-webhook connections retained in that app's listener; restarting clears them. Version 1.8.0 removes per-phase flashing traffic, keeps one health-check connection, isolates each semantic output command in a fresh session, and disables periodic output reassertion by default.
 
 ### LuxaforPresence launches but no window appears
 
