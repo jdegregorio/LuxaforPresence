@@ -9,6 +9,7 @@ struct LuxaforColor: Equatable, Hashable {
     static let off = LuxaforColor(red: 0, green: 0, blue: 0)
     static let red = LuxaforColor(red: 255, green: 0, blue: 0)
     static let yellow = LuxaforColor(red: 255, green: 255, blue: 0)
+    static let purple = LuxaforColor(red: 139, green: 92, blue: 246)
 
     var hex: String {
         String(format: "%02X%02X%02X", red, green, blue)
@@ -16,5 +17,20 @@ struct LuxaforColor: Equatable, Hashable {
 
     var localHex: String {
         "#\(hex)"
+    }
+
+    func applyingBrightness(_ brightness: Double) -> LuxaforColor {
+        let normalizedBrightness = brightness.isFinite
+            ? min(max(brightness, 0), 1)
+            : 1
+        return LuxaforColor(
+            red: Self.scaled(red, by: normalizedBrightness),
+            green: Self.scaled(green, by: normalizedBrightness),
+            blue: Self.scaled(blue, by: normalizedBrightness)
+        )
+    }
+
+    private static func scaled(_ component: UInt8, by brightness: Double) -> UInt8 {
+        UInt8((Double(component) * brightness).rounded())
     }
 }

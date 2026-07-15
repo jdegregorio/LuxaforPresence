@@ -1,6 +1,6 @@
 # Shipping LuxaforPresence
 
-Release artifacts must be Developer ID-signed, hardened, notarized, stapled, and verified. Do not publish the unsigned output from `package-dmg.sh`.
+Release artifacts must be Developer ID-signed, hardened, notarized, stapled, and verified. Do not publish the ad-hoc-signed development output from `package-dmg.sh`.
 
 ## Local trusted release
 
@@ -34,7 +34,7 @@ The script performs the steps in the required order:
 5. Notarize and staple the DMG.
 6. Validate both artifacts with `codesign`, `stapler`, and `spctl`.
 
-Do not rerun `package-dmg.sh` after signing; it reconstructs the app and intentionally produces an unsigned development artifact.
+Do not rerun `package-dmg.sh` after Developer ID signing; it reconstructs the app and intentionally produces a new ad-hoc-signed development artifact.
 
 ## GitHub Actions secrets
 

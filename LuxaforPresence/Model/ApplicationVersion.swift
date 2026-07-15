@@ -10,9 +10,7 @@ enum ApplicationVersion {
         let build = normalizedString(infoDictionary["CFBundleVersion"])
 
         switch (version, build) {
-        case let (version?, build?):
-            return "Version: \(version) (Build \(build))"
-        case let (version?, nil):
+        case let (version?, _):
             return "Version: \(version)"
         case let (nil, build?):
             return "Build: \(build)"

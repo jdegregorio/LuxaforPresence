@@ -7,11 +7,11 @@ protocol LocalOutputHeartbeating: AnyObject {
     func stop()
 }
 
-/// Provides a bounded recovery guarantee for unobservable service or USB resets.
+/// Optionally provides a bounded recovery guarantee for unobservable USB resets.
 ///
 /// Semantic output changes remain deduplicated. This local-transport-only timer
-/// deliberately forces the current physical phase at a slow cadence because the
-/// documented webhook exposes no health or device-connection status endpoint.
+/// is disabled by default because each forced action requires a fresh connection
+/// and the Luxafor desktop listener retains closed sockets for an extended time.
 final class LocalOutputHeartbeat: LocalOutputHeartbeating {
     var onHeartbeat: (() -> Void)? {
         get {

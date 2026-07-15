@@ -4,6 +4,14 @@ All notable changes to LuxaforPresence will be documented here.
 
 ## Unreleased
 
+## [1.8.0] – 2026-07-14
+
+- Replace distracting recent-voice flashing and the red cooldown with a steady purple light.
+- Eliminate delayed light updates by keeping one persistent health-check connection, sending only semantic color changes, and disabling periodic output heartbeats by default.
+- Work around the Luxafor desktop listener retaining disconnected sockets by closing low-frequency output requests and avoiding per-phase traffic.
+- Reduce purple and yellow output brightness to 70% by default, configurable with `outputBrightness`.
+- Display only the semantic app version in the menu and package both bundle version fields as `1.8.0`.
+
 ## [1.7.0] – 2026-07-13
 
 - Add the family-office state timeline: quiet Zoom calls are yellow, recent voice flashes red, cooldown is solid red, and ended sessions turn off immediately.

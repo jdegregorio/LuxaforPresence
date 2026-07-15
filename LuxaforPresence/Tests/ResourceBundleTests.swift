@@ -78,12 +78,11 @@ final class ResourceBundleTests: XCTestCase {
         XCTAssertTrue(config.detectZoom)
         XCTAssertEqual(config.vadThreshold, 0.02)
         XCTAssertEqual(config.vadMinimumActiveMilliseconds, 250)
-        XCTAssertEqual(config.recentVoiceBlinkSeconds, 300)
+        XCTAssertEqual(config.recentVoiceSeconds, 300)
         XCTAssertEqual(config.voiceCooldownSeconds, 300)
-        XCTAssertEqual(config.blinkIntervalMilliseconds, 500)
-        XCTAssertEqual(config.blinkInterval, 0.5)
-        XCTAssertEqual(config.blinkInterval * 2, 1)
+        XCTAssertFalse(config.localOutputHeartbeatEnabled)
         XCTAssertEqual(config.localOutputReassertSeconds, 30)
+        XCTAssertEqual(config.outputBrightness, 0.7)
     }
 
     func test_appResourceBundle_containsConfigAndStatusIcons() {

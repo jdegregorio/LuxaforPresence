@@ -20,13 +20,15 @@
     <real>0.02</real>
     <key>vadMinimumActiveMilliseconds</key>
     <integer>250</integer>
-    <key>recentVoiceBlinkSeconds</key>
+    <key>recentVoiceSeconds</key>
     <real>300</real>
     <key>voiceCooldownSeconds</key>
     <real>300</real>
-    <key>blinkIntervalMilliseconds</key>
-    <integer>500</integer>
+    <key>localOutputHeartbeatEnabled</key>
+    <false/>
     <key>localOutputReassertSeconds</key>
     <integer>30</integer>
+    <key>outputBrightness</key>
+    <real>0.7</real>
 </dict>
 </plist>

@@ -74,7 +74,7 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(harness.snapshots.last).voiceSamplingActive)
     }
 
-    func test_voiceOneSecondAgoWithZoom_returnsVoiceRecentAndRed() {
+    func test_voiceOneSecondAgoWithZoom_returnsVoiceRecentAndPurple() {
         let harness = PresenceEngineHarness()
         harness.meetingDetector.isActive = true
         harness.micCam.microphoneActive = true
@@ -84,13 +84,13 @@ final class PresenceEngineTests: XCTestCase {
         tickAndWait(engine)
 
         XCTAssertEqual(harness.states, [.voiceRecent])
-        XCTAssertEqual(harness.luxafor.actions, [.red(harness.config.remoteWebhookUserId)])
-        XCTAssertEqual(harness.outputs, [.blink(color: .red, interval: 0.5)])
-        XCTAssertEqual(harness.outputTimer.scheduledIntervals, [0.5])
+        XCTAssertEqual(harness.luxafor.actions, [.purple(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.outputs, [.solid(.purple)])
+        XCTAssertTrue(harness.outputTimer.scheduledIntervals.isEmpty)
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .recentVoice)
     }
 
-    func test_voiceOneSecondAgoWithMicrophoneOnly_returnsVoiceRecentAndRed() {
+    func test_voiceOneSecondAgoWithMicrophoneOnly_returnsVoiceRecentAndPurple() {
         let harness = PresenceEngineHarness()
         harness.micCam.microphoneActive = true
         harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-1)
@@ -99,7 +99,7 @@ final class PresenceEngineTests: XCTestCase {
         tickAndWait(engine)
 
         XCTAssertEqual(harness.states, [.voiceRecent])
-        XCTAssertEqual(harness.luxafor.actions, [.red(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.luxafor.actions, [.purple(harness.config.remoteWebhookUserId)])
     }
 
     func test_recentVoiceWithoutCommunicationContext_returnsAvailable() {
@@ -139,7 +139,7 @@ final class PresenceEngineTests: XCTestCase {
         tickAndWait(engine)
 
         XCTAssertEqual(harness.states, [.voiceCooldown])
-        XCTAssertEqual(harness.outputs, [.solid(.red)])
+        XCTAssertEqual(harness.outputs, [.solid(.purple)])
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .voiceCooldown)
     }
 
@@ -182,7 +182,7 @@ final class PresenceEngineTests: XCTestCase {
 
     func test_zeroVoiceDurations_skipBothTimedStates() {
         let harness = PresenceEngineHarness { config in
-            config.recentVoiceBlinkSeconds = 0
+            config.recentVoiceSeconds = 0
             config.voiceCooldownSeconds = 0
         }
         harness.meetingDetector.isActive = true
@@ -209,10 +209,10 @@ final class PresenceEngineTests: XCTestCase {
 
         XCTAssertEqual(harness.states, [.voiceRecent])
         XCTAssertEqual(harness.snapshots.map(\.state), [.voiceRecent, .voiceRecent])
-        XCTAssertEqual(harness.luxafor.actions, [.red(harness.config.remoteWebhookUserId)])
+        XCTAssertEqual(harness.luxafor.actions, [.purple(harness.config.remoteWebhookUserId)])
     }
 
-    func test_communicationContextEndingDuringRedTimeline_turnsOffImmediately() {
+    func test_communicationContextEndingDuringPurpleTimeline_turnsOffImmediately() {
         let harness = PresenceEngineHarness()
         harness.meetingDetector.isActive = true
         harness.micCam.microphoneActive = true
@@ -227,7 +227,7 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.states, [.voiceRecent, .available])
         XCTAssertEqual(
             harness.luxafor.actions,
-            [.red(harness.config.remoteWebhookUserId), .off(harness.config.remoteWebhookUserId)]
+            [.purple(harness.config.remoteWebhookUserId), .off(harness.config.remoteWebhookUserId)]
         )
         XCTAssertEqual(harness.voiceActivity.lastVoiceActivityDate, harness.currentDate)
         XCTAssertEqual(harness.voiceActivity.captureContextChanges, [true, false])
@@ -253,7 +253,7 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(
             harness.luxafor.actions,
             [
-                .red(harness.config.remoteWebhookUserId),
+                .purple(harness.config.remoteWebhookUserId),
                 .off(harness.config.remoteWebhookUserId),
                 .yellow(harness.config.remoteWebhookUserId),
             ]
@@ -301,11 +301,11 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.states, [.voiceCooldown, .voiceRecent])
         XCTAssertEqual(
             harness.luxafor.actions,
-            [.red(harness.config.remoteWebhookUserId)]
+            [.purple(harness.config.remoteWebhookUserId)]
         )
         XCTAssertEqual(
             harness.outputs,
-            [.solid(.red), .blink(color: .red, interval: 0.5)]
+            [.solid(.purple)]
         )
     }
 
@@ -526,7 +526,7 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.outputs, [.solid(.yellow)])
     }
 
-    func test_localHeartbeat_reassertsBlinkPhaseWithoutRestartingCadence() {
+    func test_localHeartbeat_reassertsSolidPurple() {
         let harness = PresenceEngineHarness()
         harness.meetingDetector.isActive = true
         harness.micCam.microphoneActive = true
@@ -535,17 +535,15 @@ final class PresenceEngineTests: XCTestCase {
 
         engine.prepare()
         tickAndWait(engine)
-        let blinkHandler = harness.outputTimer.handler
         harness.localOutputHeartbeat.fire()
 
-        XCTAssertEqual(harness.outputTimer.scheduledIntervals, [0.5])
+        XCTAssertTrue(harness.outputTimer.scheduledIntervals.isEmpty)
         XCTAssertEqual(harness.localOutputHeartbeat.startCount, 1)
-        XCTAssertNotNil(blinkHandler)
         XCTAssertEqual(
             harness.luxafor.actions,
             [
-                .red(harness.config.remoteWebhookUserId),
-                .forced(.red, harness.config.remoteWebhookUserId),
+                .purple(harness.config.remoteWebhookUserId),
+                .forced(.purple, harness.config.remoteWebhookUserId),
             ]
         )
     }
@@ -644,7 +642,7 @@ final class PresenceEngineTests: XCTestCase {
 
     func test_sleepWake_reevaluatesBeforeRestartingAndReassertingOutput() {
         let harness = PresenceEngineHarness { config in
-            config.recentVoiceBlinkSeconds = 5
+            config.recentVoiceSeconds = 5
             config.voiceCooldownSeconds = 5
         }
         harness.meetingDetector.isActive = true
@@ -653,10 +651,7 @@ final class PresenceEngineTests: XCTestCase {
         let engine = harness.makeEngine()
 
         tickAndWait(engine)
-        let staleBlinkHandler = harness.outputTimer.handler
-        harness.outputTimer.fire()
         engine.suspendOutput()
-        staleBlinkHandler?()
 
         harness.currentDate = harness.currentDate.addingTimeInterval(6)
         harness.micCam.microphoneActive = false
@@ -665,16 +660,14 @@ final class PresenceEngineTests: XCTestCase {
         wait(for: [wakeCompleted], timeout: 2)
 
         XCTAssertEqual(harness.states, [.voiceRecent, .voiceCooldown])
-        XCTAssertEqual(engine.desiredOutput, .solid(.red))
+        XCTAssertEqual(engine.desiredOutput, .solid(.purple))
         XCTAssertEqual(
             harness.luxafor.actions,
             [
-                .red(harness.config.remoteWebhookUserId),
-                .off(harness.config.remoteWebhookUserId),
-                .forced(.red, harness.config.remoteWebhookUserId),
+                .purple(harness.config.remoteWebhookUserId),
+                .forced(.purple, harness.config.remoteWebhookUserId),
             ]
         )
-        XCTAssertGreaterThanOrEqual(harness.outputTimer.cancelCount, 3)
         XCTAssertEqual(harness.voiceActivity.resumeCount, 1)
         XCTAssertEqual(harness.localServiceRecoveryMonitor.startCount, 1)
         XCTAssertEqual(harness.localOutputHeartbeat.startCount, 1)
@@ -1012,6 +1005,7 @@ private final class FakeLuxaforClient: LuxaforClientProtocol {
     enum Action: Equatable {
         case red(String)
         case yellow(String)
+        case purple(String)
         case off(String)
         case forced(LuxaforColor, String)
         case custom(LuxaforColor, String)
@@ -1026,6 +1020,8 @@ private final class FakeLuxaforClient: LuxaforClientProtocol {
             actions.append(.red(userId))
         } else if color == .yellow {
             actions.append(.yellow(userId))
+        } else if color == .purple {
+            actions.append(.purple(userId))
         } else if color == .off {
             actions.append(.off(userId))
         } else {

@@ -1,5 +1,4 @@
 import Foundation
-import Network
 import OSLog
 
 protocol LocalServiceRecoveryMonitoring: AnyObject {
@@ -45,54 +44,33 @@ final class LocalServiceRecoveryTimer: LocalServiceRecoveryTimerProtocol {
     }
 }
 
-/// A neutral TCP probe for the configured local webhook listener.
+/// A persistent HTTP probe for the configured local webhook listener.
 ///
-/// Luxafor documents the listener address but no health endpoint. Opening and
-/// immediately closing a TCP connection observes listener lifecycle without
-/// sending a color or depending on an undocumented desktop-app bundle ID.
-final class LocalServiceTCPProbe: LocalServiceReachabilityProbing {
-    private let host: NWEndpoint.Host
-    private let port: NWEndpoint.Port
-    private let queue = DispatchQueue(
-        label: "com.jdegregorio.LuxaforPresence.local-service-probe",
-        qos: .utility
-    )
+/// A HEAD request checks the documented color endpoint without changing the
+/// device. Reusing one URLSession connection is important because the Luxafor
+/// desktop listener retains disconnected sockets for an extended period.
+final class LocalServiceHTTPProbe: LocalServiceReachabilityProbing {
+    private let colorURL: URL
+    private let session: URLSession
     private let timeout: TimeInterval
 
-    init(endpoint: LocalWebhookEndpoint, timeout: TimeInterval = 1) {
-        host = NWEndpoint.Host(endpoint.baseURL.host ?? "127.0.0.1")
-        let defaultPort = endpoint.baseURL.scheme?.lowercased() == "https" ? 443 : 80
-        port = NWEndpoint.Port(
-            rawValue: UInt16(endpoint.baseURL.port ?? defaultPort)
-        ) ?? NWEndpoint.Port(rawValue: 5383)!
+    init(
+        endpoint: LocalWebhookEndpoint,
+        timeout: TimeInterval = 1,
+        session: URLSession = LocalWebhookSession.make()
+    ) {
+        colorURL = endpoint.colorURL
         self.timeout = max(0.1, timeout)
+        self.session = session
     }
 
     func probe(completion: @escaping (Bool) -> Void) {
-        let connection = NWConnection(host: host, port: port, using: .tcp)
-        var completed = false
-        let finish: (Bool) -> Void = { reachable in
-            guard !completed else { return }
-            completed = true
-            connection.stateUpdateHandler = nil
-            connection.cancel()
-            completion(reachable)
-        }
-
-        connection.stateUpdateHandler = { state in
-            switch state {
-            case .ready:
-                finish(true)
-            case .failed, .cancelled:
-                finish(false)
-            default:
-                break
-            }
-        }
-        connection.start(queue: queue)
-        queue.asyncAfter(deadline: .now() + timeout) {
-            finish(false)
-        }
+        var request = URLRequest(url: colorURL, timeoutInterval: timeout)
+        request.httpMethod = "HEAD"
+        request.addValue("keep-alive", forHTTPHeaderField: "Connection")
+        session.dataTask(with: request) { _, response, error in
+            completion(error == nil && response is HTTPURLResponse)
+        }.resume()
     }
 }
 

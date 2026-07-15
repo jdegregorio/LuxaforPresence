@@ -76,12 +76,6 @@ jobs:
             fi
           done
           test -L dist/dmg-src/Applications
-          codesign \
-            --force \
-            --deep \
-            --sign - \
-            --entitlements LuxaforPresence/LuxaforPresence.entitlements \
-            dist/LuxaforPresence.app
           codesign --verify --deep --strict --verbose=2 dist/LuxaforPresence.app
           ENTITLEMENTS_OUTPUT="$(codesign -d --entitlements - dist/LuxaforPresence.app 2>&1)"
           grep -q 'com.apple.security.device.audio-input' <<<"$ENTITLEMENTS_OUTPUT"

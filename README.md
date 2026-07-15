@@ -13,7 +13,7 @@ The recommended setup uses only local transport. It does **not** require a Luxaf
 | Incoming Local Webhooks enabled | Required | Required for the recommended local transport. |
 | Matching webhook port and security token | Required | The defaults are port `5383` and token `luxafor`. No config file is needed when both apps use those values. |
 | LuxaforPresence in `/Applications` or `~/Applications` | Required | Needed for normal launching, permissions, and launch-at-login support. `/Applications` is recommended. |
-| Microphone permission | Required for voice detection | Without it, Zoom detection and manual controls still work, but voice energy cannot select the red states. |
+| Microphone permission | Required for voice detection | Without it, Zoom detection and manual controls still work, but voice energy cannot select the purple states. |
 | `~/.config/LuxaforPresence/config.plist` | Optional | Create it only to change a default port, token, timing, threshold, or transport mode. |
 | `remoteWebhookUserId` | Optional | Used only when `transportMode` is `remote`. Leave `YOUR_USER_ID_HERE` unchanged for local transport. |
 | Zoom | Optional | Needed only for automatic Zoom detection. Microphone-based presence and manual controls work without Zoom. |
@@ -86,7 +86,7 @@ If the Luxafor app uses a different port or token, update `localWebhookBaseUrl` 
 
 ## 2. Install LuxaforPresence
 
-1. Double-click `LuxaforPresence-1.7.0.dmg`.
+1. Double-click `LuxaforPresence-1.8.0.dmg`.
 2. Drag **LuxaforPresence.app** onto the **Applications** shortcut in the DMG.
 3. Eject the DMG.
 4. Open `/Applications` in Finder and launch **LuxaforPresence** from there.
@@ -153,14 +153,16 @@ The created file is readable only by the current user. The complete default conf
     <real>0.02</real>
     <key>vadMinimumActiveMilliseconds</key>
     <integer>250</integer>
-    <key>recentVoiceBlinkSeconds</key>
+    <key>recentVoiceSeconds</key>
     <real>300</real>
     <key>voiceCooldownSeconds</key>
     <real>300</real>
-    <key>blinkIntervalMilliseconds</key>
-    <integer>500</integer>
+    <key>localOutputHeartbeatEnabled</key>
+    <false/>
     <key>localOutputReassertSeconds</key>
     <integer>30</integer>
+    <key>outputBrightness</key>
+    <real>0.7</real>
 </dict>
 </plist>
 ```
@@ -178,10 +180,11 @@ The created file is readable only by the current user. The complete default conf
 | `vadEnabled` | `true` | Enables local voice-energy analysis during external microphone use. |
 | `vadThreshold` | `0.02` | RMS energy threshold. Valid range is greater than `0` through `1`. |
 | `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required to qualify voice activity. Minimum `250`. |
-| `recentVoiceBlinkSeconds` | `300` | Duration of the flashing-red recent-voice state. |
-| `voiceCooldownSeconds` | `300` | Duration of the solid-red cooldown state. |
-| `blinkIntervalMilliseconds` | `500` | Duration of each red/off phase. `500` produces one complete flash per second. Minimum `100`. |
-| `localOutputReassertSeconds` | `30` | Periodic physical-output reassertion for local transport. Minimum `5`. |
+| `recentVoiceSeconds` | `300` | Duration of the recent-voice state. The legacy `recentVoiceBlinkSeconds` key is still accepted. |
+| `voiceCooldownSeconds` | `300` | Duration of the cooldown state after recent voice. Both voice states use solid purple. |
+| `localOutputHeartbeatEnabled` | `false` | Advanced recovery option that periodically reasserts output. Keep disabled for the Luxafor desktop listener's best responsiveness. |
+| `localOutputReassertSeconds` | `30` | Heartbeat interval when `localOutputHeartbeatEnabled` is enabled. Minimum `5`. |
+| `outputBrightness` | `0.7` | Scales purple and yellow RGB intensity per request. Use a value from `0` through `1`; `0.7` is 70% of full output. |
 
 Invalid numeric values are rejected at startup and replaced with safe defaults. Local plain-HTTP URLs are accepted only for loopback hosts such as `127.0.0.1` and `localhost`.
 
@@ -214,7 +217,7 @@ If the menu instead says **Luxafor Webhook: Not Listening — Check Luxafor Sett
 Use the menu's manual overrides before testing Zoom:
 
 1. Select **Zoom Quiet / Yellow**. The Flag should become solid yellow.
-2. Select **Voice Recent / Flashing Red**. The Flag should flash red.
+2. Select **Voice Recent / Solid Purple**. The Flag should become solid purple.
 3. Select **Available / Off**. The Flag should turn off.
 4. Select **Automatic** to restore signal-based behavior.
 
@@ -238,7 +241,7 @@ Use the actual port and token if you changed them. Treat a custom token like a p
 1. Leave Zoom closed and confirm **Voice Sampling: Idle**.
 2. Start an app that actively opens the microphone, such as a Zoom meeting with microphone input enabled.
 3. Within one polling interval, expect **External Microphone: In Use** and **Voice Sampling: Active**. The macOS microphone privacy indicator is expected while sampling is active.
-4. Speak normally for at least 250 milliseconds. Expect **Voice Energy: Detected** and then flashing red.
+4. Speak normally for at least 250 milliseconds. Expect **Voice Energy: Detected** and then solid purple.
 5. Stop the meeting or close the microphone-using app. Expect **Voice Sampling: Idle** and the light to turn off once both Zoom and external microphone contexts have ended. macOS may briefly retain its privacy indicator after capture stops.
 
 LuxaforPresence measures input energy; it cannot prove that another application's mute control is enabled. Quiet may also mean a quiet room, a different input device, or application-level audio processing.
@@ -249,21 +252,20 @@ LuxaforPresence measures input energy; it cannot prove that another application'
 | --- | --- |
 | Off | No active Zoom meeting or qualifying voice activity in an active microphone context |
 | Solid yellow | Zoom is active, but no qualifying voice signal occurred in the last ten minutes |
-| Flashing red | Qualifying microphone energy occurred in the last five minutes |
-| Solid red | The last qualifying signal was five to ten minutes ago |
+| Solid purple | Qualifying microphone energy occurred in the last ten minutes, including the cooldown period |
 
-The red timeline continues while either Zoom or external microphone use keeps the communication context active. When both end, the light turns off immediately. A new qualifying signal restarts the five-minute flashing period.
+The purple timeline continues while either Zoom or external microphone use keeps the communication context active. When both end, the light turns off immediately. A new qualifying signal restarts the recent-voice period before cooldown.
 
 Manual choices take precedence over automatic detection and stop voice sampling:
 
 - Automatic
 - Available / Off
 - Zoom Quiet / Yellow
-- Voice Recent / Flashing Red
-- Voice Cooldown / Solid Red
+- Voice Recent / Solid Purple
+- Voice Cooldown / Solid Purple
 - Reset Voice Timer
 
-The bottom of the menu shows the version and build number read from the running app, for example **Version: 1.7.0 (Build 5)**.
+The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.8.0**.
 
 ## Privacy and permissions
 
@@ -292,6 +294,10 @@ The user configuration in `~/.config/LuxaforPresence/config.plist` is outside th
 - Confirm the webhook port and security token match `localWebhookBaseUrl` and `localWebhookToken`.
 - Run the direct `curl` test above.
 - Return LuxaforPresence to **Automatic** after testing manual overrides.
+
+### Color changes are delayed after upgrading from 1.7.0
+
+Quit and reopen the official Luxafor desktop app once. Version 1.7.0 could leave many short-lived local-webhook connections retained in that app's listener; restarting clears them. Version 1.8.0 removes per-phase flashing traffic, keeps one health-check connection, and disables periodic output reassertion by default.
 
 ### LuxaforPresence launches but no window appears
 
@@ -360,10 +366,10 @@ CLANG_MODULE_CACHE_PATH=$PWD/.cache swift build --disable-sandbox
 Create a release app and local DMG:
 
 ```bash
-./scripts/package-dmg.sh -c release -n LuxaforPresence-1.7.0
+./scripts/package-dmg.sh -c release -n LuxaforPresence-1.8.0
 ```
 
-Outputs are written under `dist/`. The packaging script intentionally creates an unsigned development artifact. For trusted distribution, follow [DIST.md](DIST.md) to Developer ID-sign, notarize, staple, and verify the app and DMG.
+Outputs are written under `dist/`. The packaging script creates an ad-hoc-signed development artifact with the microphone entitlement. For trusted distribution, follow [DIST.md](DIST.md) to Developer ID-sign, notarize, staple, and verify the app and DMG.
 
 ## License
 
