@@ -11,14 +11,14 @@ final class PresenceEngine {
         static let defaultPollInterval: TimeInterval = 2.0
         static let minimumPollInterval: TimeInterval = 0.25
         static let defaultVadThreshold = 0.02
-        static let defaultRecentVoiceBlinkSeconds: TimeInterval = 300
+        static let defaultRecentVoiceSeconds: TimeInterval = 300
         static let defaultVoiceCooldownSeconds: TimeInterval = 300
-        static let defaultBlinkIntervalMilliseconds: TimeInterval = 500
-        static let minimumBlinkIntervalMilliseconds: TimeInterval = 100
         static let defaultVadMinimumActiveMilliseconds: TimeInterval = 250
         static let minimumVadMinimumActiveMilliseconds: TimeInterval = 250
         static let defaultLocalOutputReassertSeconds: TimeInterval = 30
         static let minimumLocalOutputReassertSeconds: TimeInterval = 5
+        static let defaultOutputBrightness = 0.7
+        static let defaultLocalOutputHeartbeatEnabled = false
 
         var transportMode: TransportMode = .local
         var localWebhookBaseUrl = LocalWebhookEndpoint.defaultBaseURLString
@@ -29,10 +29,11 @@ final class PresenceEngine {
         var vadEnabled = true
         var vadThreshold = defaultVadThreshold
         var vadMinimumActiveMilliseconds = defaultVadMinimumActiveMilliseconds
-        var recentVoiceBlinkSeconds = defaultRecentVoiceBlinkSeconds
+        var recentVoiceSeconds = defaultRecentVoiceSeconds
         var voiceCooldownSeconds = defaultVoiceCooldownSeconds
-        var blinkIntervalMilliseconds = defaultBlinkIntervalMilliseconds
         var localOutputReassertSeconds = defaultLocalOutputReassertSeconds
+        var outputBrightness = defaultOutputBrightness
+        var localOutputHeartbeatEnabled = defaultLocalOutputHeartbeatEnabled
         private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "Config")
 
         init(
@@ -129,11 +130,11 @@ final class PresenceEngine {
                     logger.error("Invalid vadMinimumActiveMilliseconds; expected a finite value of at least \(Self.minimumVadMinimumActiveMilliseconds, privacy: .public) milliseconds. Using \(Self.defaultVadMinimumActiveMilliseconds, privacy: .public) milliseconds.")
                 }
             }
-            if let value = values["recentVoiceBlinkSeconds"] {
+            if let value = values["recentVoiceSeconds"] ?? values["recentVoiceBlinkSeconds"] {
                 if let duration = Self.nonNegativeFiniteDuration(from: value) {
-                    recentVoiceBlinkSeconds = duration
+                    recentVoiceSeconds = duration
                 } else {
-                    logger.error("Invalid recentVoiceBlinkSeconds; expected a finite non-negative value. Using \(Self.defaultRecentVoiceBlinkSeconds, privacy: .public) seconds.")
+                    logger.error("Invalid recentVoiceSeconds; expected a finite non-negative value. Using \(Self.defaultRecentVoiceSeconds, privacy: .public) seconds.")
                 }
             }
             if let value = values["voiceCooldownSeconds"] {
@@ -141,15 +142,6 @@ final class PresenceEngine {
                     voiceCooldownSeconds = duration
                 } else {
                     logger.error("Invalid voiceCooldownSeconds; expected a finite non-negative value. Using \(Self.defaultVoiceCooldownSeconds, privacy: .public) seconds.")
-                }
-            }
-            if let value = values["blinkIntervalMilliseconds"] {
-                if let interval = Self.number(from: value),
-                   interval.isFinite,
-                   interval >= Self.minimumBlinkIntervalMilliseconds {
-                    blinkIntervalMilliseconds = interval
-                } else {
-                    logger.error("Invalid blinkIntervalMilliseconds; expected a finite value of at least \(Self.minimumBlinkIntervalMilliseconds, privacy: .public). Using \(Self.defaultBlinkIntervalMilliseconds, privacy: .public) milliseconds.")
                 }
             }
             if let value = values["localOutputReassertSeconds"] {
@@ -160,6 +152,18 @@ final class PresenceEngine {
                 } else {
                     logger.error("Invalid localOutputReassertSeconds; expected a finite value of at least \(Self.minimumLocalOutputReassertSeconds, privacy: .public). Using \(Self.defaultLocalOutputReassertSeconds, privacy: .public) seconds.")
                 }
+            }
+            if let value = values["outputBrightness"] {
+                if let brightness = Self.number(from: value),
+                   brightness.isFinite,
+                   (0...1).contains(brightness) {
+                    outputBrightness = brightness
+                } else {
+                    logger.error("Invalid outputBrightness; expected a finite value from 0 through 1. Using \(Self.defaultOutputBrightness, privacy: .public).")
+                }
+            }
+            if let heartbeatEnabled = values["localOutputHeartbeatEnabled"] as? Bool {
+                localOutputHeartbeatEnabled = heartbeatEnabled
             }
         }
 
@@ -202,15 +206,12 @@ final class PresenceEngine {
             let finalizedVadEnabled = vadEnabled
             let finalizedVadThreshold = vadThreshold
             let finalizedVadMinimumActiveMilliseconds = vadMinimumActiveMilliseconds
-            let finalizedRecentVoiceBlinkSeconds = recentVoiceBlinkSeconds
+            let finalizedRecentVoiceSeconds = recentVoiceSeconds
             let finalizedVoiceCooldownSeconds = voiceCooldownSeconds
-            let finalizedBlinkIntervalMilliseconds = blinkIntervalMilliseconds
             let finalizedLocalOutputReassertSeconds = localOutputReassertSeconds
-            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, detectZoom \(finalizedDetectZoom, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), vadMinimumActiveMilliseconds \(finalizedVadMinimumActiveMilliseconds, privacy: .public), recentVoiceBlinkSeconds \(finalizedRecentVoiceBlinkSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public), blinkIntervalMilliseconds \(finalizedBlinkIntervalMilliseconds, privacy: .public), localOutputReassertSeconds \(finalizedLocalOutputReassertSeconds, privacy: .public)")
-        }
-
-        var blinkInterval: TimeInterval {
-            blinkIntervalMilliseconds / 1_000
+            let finalizedOutputBrightness = outputBrightness
+            let finalizedLocalOutputHeartbeatEnabled = localOutputHeartbeatEnabled
+            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, detectZoom \(finalizedDetectZoom, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), vadMinimumActiveMilliseconds \(finalizedVadMinimumActiveMilliseconds, privacy: .public), recentVoiceSeconds \(finalizedRecentVoiceSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public), localOutputHeartbeatEnabled \(finalizedLocalOutputHeartbeatEnabled, privacy: .public), localOutputReassertSeconds \(finalizedLocalOutputReassertSeconds, privacy: .public), outputBrightness \(finalizedOutputBrightness, privacy: .public)")
         }
 
         var vadMinimumActiveDuration: TimeInterval {
@@ -221,16 +222,21 @@ final class PresenceEngine {
             switch transportMode {
             case .local:
                 do {
-                    return try LuxaforLocalWebhookClient(baseURL: localWebhookBaseUrl, token: localWebhookToken)
+                    return try LuxaforLocalWebhookClient(
+                        baseURL: localWebhookBaseUrl,
+                        token: localWebhookToken,
+                        outputBrightness: outputBrightness
+                    )
                 } catch {
                     logger.fault("Local webhook configuration became invalid after initialization: \(error.localizedDescription, privacy: .public). Using the loopback default.")
                     return LuxaforLocalWebhookClient(
                         endpoint: .default,
-                        token: localWebhookToken
+                        token: localWebhookToken,
+                        outputBrightness: outputBrightness
                     )
                 }
             case .remote:
-                return LuxaforClient()
+                return LuxaforClient(outputBrightness: outputBrightness)
             }
         }
 
@@ -240,12 +246,14 @@ final class PresenceEngine {
                 return nil
             }
             return LocalServiceRecoveryMonitor(
-                probe: LocalServiceTCPProbe(endpoint: endpoint)
+                probe: LocalServiceHTTPProbe(
+                    endpoint: endpoint
+                )
             )
         }
 
         func makeLocalOutputHeartbeat() -> LocalOutputHeartbeating? {
-            guard transportMode == .local else { return nil }
+            guard transportMode == .local, localOutputHeartbeatEnabled else { return nil }
             return LocalOutputHeartbeat(interval: localOutputReassertSeconds)
         }
     }
@@ -609,12 +617,12 @@ final class PresenceEngine {
                 0,
                 evaluatedAt.timeIntervalSince(lastVoiceActivityDate)
             )
-            if secondsSinceVoiceActivity < config.recentVoiceBlinkSeconds {
+            if secondsSinceVoiceActivity < config.recentVoiceSeconds {
                 return (.voiceRecent, .recentVoice)
             }
 
             let secondsIntoCooldown = secondsSinceVoiceActivity
-                - config.recentVoiceBlinkSeconds
+                - config.recentVoiceSeconds
             if secondsIntoCooldown < config.voiceCooldownSeconds {
                 return (.voiceCooldown, .voiceCooldown)
             }
@@ -720,7 +728,7 @@ final class PresenceEngine {
         decisionPath: String
     ) {
         let previousState = lastState
-        let output = state.lightOutput(blinkInterval: config.blinkInterval)
+        let output = state.lightOutput
         let zoomActive = snapshot.map { String($0.zoomActive) } ?? "unknown"
         let microphoneActive = snapshot.map { String($0.microphoneActive) } ?? "unknown"
         let voiceCurrentlyAboveThreshold = snapshot.map {

@@ -9,7 +9,7 @@ struct PresenceMenuDiagnostics: Equatable {
     let voiceSamplingTitle: String
     let voiceSignalTitle: String
     let lastVoiceTitle: String
-    let flashingRemainingTitle: String
+    let recentVoiceRemainingTitle: String
     let cooldownRemainingTitle: String
 
     init(
@@ -18,7 +18,7 @@ struct PresenceMenuDiagnostics: Equatable {
         snapshot: PresenceSnapshot?,
         transportMode: TransportMode = .local,
         localWebhookReachable: Bool? = nil,
-        recentVoiceBlinkSeconds: TimeInterval,
+        recentVoiceSeconds: TimeInterval,
         voiceCooldownSeconds: TimeInterval,
         manualOverride: PresenceState? = nil,
         now: Date
@@ -57,13 +57,13 @@ struct PresenceMenuDiagnostics: Equatable {
         }
 
         if manualOverride == nil, state == .voiceRecent, let elapsed {
-            flashingRemainingTitle = "Flashing Remaining: \(Self.formatRemaining(recentVoiceBlinkSeconds - elapsed))"
+            recentVoiceRemainingTitle = "Recent Voice Remaining: \(Self.formatRemaining(recentVoiceSeconds - elapsed))"
         } else {
-            flashingRemainingTitle = "Flashing Remaining: —"
+            recentVoiceRemainingTitle = "Recent Voice Remaining: —"
         }
 
         if manualOverride == nil, state == .voiceCooldown, let elapsed {
-            let remaining = recentVoiceBlinkSeconds + voiceCooldownSeconds - elapsed
+            let remaining = recentVoiceSeconds + voiceCooldownSeconds - elapsed
             cooldownRemainingTitle = "Cooldown Remaining: \(Self.formatRemaining(remaining))"
         } else {
             cooldownRemainingTitle = "Cooldown Remaining: —"
@@ -80,7 +80,7 @@ struct PresenceMenuDiagnostics: Equatable {
             voiceSamplingTitle,
             voiceSignalTitle,
             lastVoiceTitle,
-            flashingRemainingTitle,
+            recentVoiceRemainingTitle,
             cooldownRemainingTitle,
         ]
     }

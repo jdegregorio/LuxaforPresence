@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             output: nil,
             snapshot: nil,
             transportMode: engine.config.transportMode,
-            recentVoiceBlinkSeconds: engine.config.recentVoiceBlinkSeconds,
+            recentVoiceSeconds: engine.config.recentVoiceSeconds,
             voiceCooldownSeconds: engine.config.voiceCooldownSeconds,
             now: Date()
         ).titles.map { title in
@@ -119,13 +119,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         voiceRecentItem = addMenuItem(
             to: menu,
-            title: "Voice Recent / Flashing Red",
+            title: "Voice Recent / Solid Purple",
             action: #selector(forceVoiceRecent),
             keyEquivalent: "r"
         )
         voiceCooldownItem = addMenuItem(
             to: menu,
-            title: "Voice Cooldown / Solid Red",
+            title: "Voice Cooldown / Solid Purple",
             action: #selector(forceVoiceCooldown),
             keyEquivalent: "c"
         )
@@ -206,7 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             snapshot: latestSnapshot,
             transportMode: engine.config.transportMode,
             localWebhookReachable: localWebhookReachable,
-            recentVoiceBlinkSeconds: engine.config.recentVoiceBlinkSeconds,
+            recentVoiceSeconds: engine.config.recentVoiceSeconds,
             voiceCooldownSeconds: engine.config.voiceCooldownSeconds,
             manualOverride: manualState,
             now: Date()

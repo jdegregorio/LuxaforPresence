@@ -2,7 +2,7 @@ import XCTest
 @testable import LuxaforPresence
 
 final class PresenceMenuDiagnosticsTests: XCTestCase {
-    func test_voiceRecent_rendersSignalsLastVoiceAndBlinkCadence() {
+    func test_voiceRecent_rendersSignalsLastVoiceAndPurpleOutput() {
         let now = Date(timeIntervalSinceReferenceDate: 10_000)
         let snapshot = PresenceSnapshot(
             state: .voiceRecent,
@@ -17,22 +17,22 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         let diagnostics = PresenceMenuDiagnostics(
             state: .voiceRecent,
-            output: .blink(color: .red, interval: 0.75),
+            output: .solid(.purple),
             snapshot: snapshot,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: now
         )
 
-        XCTAssertEqual(diagnostics.statusTitle, "Status: Voice Recent (Flashing Red)")
-        XCTAssertEqual(diagnostics.outputTitle, "Output: Flashing Red (750 ms)")
+        XCTAssertEqual(diagnostics.statusTitle, "Status: Voice Recent (Purple)")
+        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Purple")
         XCTAssertEqual(diagnostics.connectionTitle, "Luxafor Webhook: Checking…")
         XCTAssertEqual(diagnostics.zoomTitle, "Zoom: Active")
         XCTAssertEqual(diagnostics.microphoneTitle, "External Microphone: In Use")
         XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Active")
         XCTAssertEqual(diagnostics.voiceSignalTitle, "Voice Energy: Detected")
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: 12s ago")
-        XCTAssertEqual(diagnostics.flashingRemainingTitle, "Flashing Remaining: 4m 48s")
+        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Voice Remaining: 4m 48s")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: —")
     }
 
@@ -51,16 +51,16 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         let diagnostics = PresenceMenuDiagnostics(
             state: .voiceCooldown,
-            output: .solid(.red),
+            output: .solid(.purple),
             snapshot: snapshot,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: now
         )
 
-        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Red")
+        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Purple")
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: 7m ago")
-        XCTAssertEqual(diagnostics.flashingRemainingTitle, "Flashing Remaining: —")
+        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Voice Remaining: —")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: 3m")
     }
 
@@ -69,7 +69,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             state: .unknown,
             output: nil,
             snapshot: nil,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: Date()
         )
@@ -87,7 +87,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             output: .off,
             snapshot: nil,
             localWebhookReachable: true,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: Date()
         )
@@ -96,7 +96,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             output: .off,
             snapshot: nil,
             localWebhookReachable: false,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: Date()
         )
@@ -105,7 +105,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             output: .off,
             snapshot: nil,
             transportMode: .remote,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: Date()
         )
@@ -143,22 +143,22 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         let recent = PresenceMenuDiagnostics(
             state: .voiceRecent,
-            output: .blink(color: .red, interval: 0.75),
+            output: .solid(.purple),
             snapshot: recentSnapshot,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: now
         )
         let cooldown = PresenceMenuDiagnostics(
             state: .voiceCooldown,
-            output: .solid(.red),
+            output: .solid(.purple),
             snapshot: cooldownSnapshot,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             now: now
         )
 
-        XCTAssertEqual(recent.flashingRemainingTitle, "Flashing Remaining: 0s")
+        XCTAssertEqual(recent.recentVoiceRemainingTitle, "Recent Voice Remaining: 0s")
         XCTAssertEqual(cooldown.cooldownRemainingTitle, "Cooldown Remaining: 0s")
     }
 
@@ -177,9 +177,9 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         let diagnostics = PresenceMenuDiagnostics(
             state: .voiceRecent,
-            output: .blink(color: .red, interval: 0.75),
+            output: .solid(.purple),
             snapshot: snapshot,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             manualOverride: .voiceRecent,
             now: now
@@ -187,23 +187,23 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
 
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: 12s ago")
         XCTAssertEqual(diagnostics.voiceSamplingTitle, "Voice Sampling: Idle")
-        XCTAssertEqual(diagnostics.flashingRemainingTitle, "Flashing Remaining: —")
+        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Voice Remaining: —")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: —")
     }
 
     func test_manualResetSnapshot_showsClearedVoiceDiagnostics() {
         let diagnostics = PresenceMenuDiagnostics(
             state: .voiceCooldown,
-            output: .solid(.red),
+            output: .solid(.purple),
             snapshot: nil,
-            recentVoiceBlinkSeconds: 300,
+            recentVoiceSeconds: 300,
             voiceCooldownSeconds: 300,
             manualOverride: .voiceCooldown,
             now: Date()
         )
 
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Voice: Never")
-        XCTAssertEqual(diagnostics.flashingRemainingTitle, "Flashing Remaining: —")
+        XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Voice Remaining: —")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: —")
     }
 }

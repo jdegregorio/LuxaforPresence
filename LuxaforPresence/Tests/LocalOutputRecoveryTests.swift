@@ -101,13 +101,17 @@ final class LocalOutputRecoveryTests: XCTestCase {
 
     func test_recoveryComponents_areLocalTransportOnly() {
         let localConfig = PresenceEngine.Config(values: [:])
+        let localHeartbeatConfig = PresenceEngine.Config(values: [
+            "localOutputHeartbeatEnabled": true,
+        ])
         let remoteConfig = PresenceEngine.Config(values: [
             "transportMode": "remote",
             "remoteWebhookUserId": "valid-user",
         ])
 
         XCTAssertNotNil(localConfig.makeLocalServiceRecoveryMonitor())
-        XCTAssertNotNil(localConfig.makeLocalOutputHeartbeat())
+        XCTAssertNil(localConfig.makeLocalOutputHeartbeat())
+        XCTAssertNotNil(localHeartbeatConfig.makeLocalOutputHeartbeat())
         XCTAssertNil(remoteConfig.makeLocalServiceRecoveryMonitor())
         XCTAssertNil(remoteConfig.makeLocalOutputHeartbeat())
     }

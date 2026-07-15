@@ -17,6 +17,8 @@ enum LightOutput: Equatable {
             return "Solid Yellow"
         case .solid(let color) where color == .red:
             return "Solid Red"
+        case .solid(let color) where color == .purple:
+            return "Solid Purple"
         case .solid:
             return "Solid Custom Color"
         case .blink(let color, _) where color == .red:
@@ -48,16 +50,16 @@ enum LightOutput: Equatable {
 }
 
 extension PresenceState {
-    func lightOutput(blinkInterval: TimeInterval) -> LightOutput {
+    var lightOutput: LightOutput {
         switch self {
         case .available, .unknown:
             return .off
         case .zoomQuiet:
             return .solid(.yellow)
         case .voiceRecent:
-            return .blink(color: .red, interval: blinkInterval)
+            return .solid(.purple)
         case .voiceCooldown:
-            return .solid(.red)
+            return .solid(.purple)
         }
     }
 }

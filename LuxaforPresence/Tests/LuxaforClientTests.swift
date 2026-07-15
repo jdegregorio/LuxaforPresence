@@ -188,6 +188,7 @@ final class LuxaforClientTests: XCTestCase {
         TestURLProtocol.handler = { request, protocolInstance in
             XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:5383/luxafor/v1/color")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Connection"), "close")
             let payload = try XCTUnwrap(Self.jsonBody(from: request))
             XCTAssertEqual(payload["color"] as? String, "#FFFF00")
             protocolInstance.respond(statusCode: 200)
@@ -204,6 +205,56 @@ final class LuxaforClientTests: XCTestCase {
         wait(for: [requestReceived], timeout: 2)
     }
 
+    func test_localSessionConfiguration_limitsAndReusesOneConnection() {
+        let configuration = LocalWebhookSession.makeConfiguration()
+
+        XCTAssertEqual(configuration.httpMaximumConnectionsPerHost, 1)
+        XCTAssertTrue(configuration.httpShouldUsePipelining)
+        XCTAssertEqual(configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertNil(configuration.urlCache)
+    }
+
+    func test_localServiceHTTPProbe_usesHeadAndAcceptsAnyHTTPResponse() throws {
+        let requestReceived = expectation(description: "health request received")
+        let completionReceived = expectation(description: "health completion received")
+        TestURLProtocol.handler = { request, protocolInstance in
+            XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:5383/base/color")
+            XCTAssertEqual(request.httpMethod, "HEAD")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Connection"), "keep-alive")
+            protocolInstance.respond(statusCode: 503)
+            requestReceived.fulfill()
+        }
+        let probe = LocalServiceHTTPProbe(
+            endpoint: try LocalWebhookEndpoint(validating: "http://127.0.0.1:5383/base"),
+            session: makeSession()
+        )
+
+        probe.probe { reachable in
+            XCTAssertTrue(reachable)
+            completionReceived.fulfill()
+        }
+
+        wait(for: [requestReceived, completionReceived], timeout: 2)
+    }
+
+    func test_localServiceHTTPProbe_reportsTransportFailure() throws {
+        let completionReceived = expectation(description: "health failure received")
+        TestURLProtocol.handler = { _, _ in
+            throw URLError(.cannotConnectToHost)
+        }
+        let probe = LocalServiceHTTPProbe(
+            endpoint: try LocalWebhookEndpoint(validating: "http://127.0.0.1:5383"),
+            session: makeSession()
+        )
+
+        probe.probe { reachable in
+            XCTAssertFalse(reachable)
+            completionReceived.fulfill()
+        }
+
+        wait(for: [completionReceived], timeout: 2)
+    }
+
     func test_setSolidYellow_usesTrueYellowRemotePayload() throws {
         let requestReceived = expectation(description: "yellow request received")
         TestURLProtocol.handler = { request, protocolInstance in
@@ -218,6 +269,46 @@ final class LuxaforClientTests: XCTestCase {
         client.setSolidColor(.yellow, userId: "test-user", force: false)
 
         wait(for: [requestReceived], timeout: 2)
+    }
+
+    func test_outputBrightness_scalesLocalAndRemotePurplePayloads() throws {
+        let requestsReceived = expectation(description: "scaled purple requests received")
+        requestsReceived.expectedFulfillmentCount = 2
+        let lock = NSLock()
+        var payloadColors: [String] = []
+        TestURLProtocol.handler = { request, protocolInstance in
+            let color: String
+            if request.url?.host == "api.luxafor.com" {
+                color = try XCTUnwrap(Self.actionFields(from: request)?["custom_color"] as? String)
+            } else {
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Connection"), "close")
+                color = try XCTUnwrap(Self.jsonBody(from: request)?["color"] as? String)
+            }
+            lock.lock()
+            payloadColors.append(color)
+            lock.unlock()
+            protocolInstance.respond(statusCode: 200)
+            requestsReceived.fulfill()
+        }
+
+        let remoteClient = LuxaforClient(
+            session: makeSession(),
+            outputBrightness: 0.7
+        )
+        let localClient = try LuxaforLocalWebhookClient(
+            baseURL: "http://127.0.0.1:5383",
+            token: "test-token",
+            session: makeSession(),
+            outputBrightness: 0.7
+        )
+        remoteClient.setSolidColor(.purple, userId: "test-user", force: false)
+        localClient.setSolidColor(.purple, userId: "ignored", force: false)
+
+        wait(for: [requestsReceived], timeout: 2)
+        lock.lock()
+        let finalColors = payloadColors
+        lock.unlock()
+        XCTAssertEqual(Set(finalColors), Set(["6140AC", "#6140AC"]))
     }
 
     func test_setSolidCustomColor_preservesExactRGBPayloads() throws {

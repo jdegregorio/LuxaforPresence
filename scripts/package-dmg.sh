@@ -49,6 +49,11 @@ if ! command -v hdiutil >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! command -v codesign >/dev/null 2>&1; then
+    echo "codesign command not found; cannot sign the app bundle." >&2
+    exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PRODUCT_NAME=LuxaforPresence
 DIST_DIR="${REPO_ROOT}/dist"
@@ -92,6 +97,17 @@ if [[ -f "${CONFIG_SAMPLE}" ]]; then
 fi
 
 "${REPO_ROOT}/scripts/verify-app-resources.sh" "${APP_DIR}"
+
+# SwiftPM signs the standalone executable during the build. Re-sign the fully
+# assembled app so its final Info.plist, resources, and audio-input entitlement
+# are covered by one internally consistent development signature.
+codesign \
+    --force \
+    --deep \
+    --sign - \
+    --entitlements "${REPO_ROOT}/LuxaforPresence/LuxaforPresence.entitlements" \
+    "${APP_DIR}"
+codesign --verify --deep --strict --verbose=2 "${APP_DIR}"
 
 echo "Creating dmg at ${DMG_PATH}…"
 rm -rf "${DMG_STAGING}" "${DMG_PATH}"
