@@ -43,6 +43,72 @@ final class MicCamSignalTests: XCTestCase {
         )
     }
 
+    func test_coreAudioActivityReduction_ignoresCoreSpeechVoiceTrigger() {
+        let activities = [
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 123,
+                bundleIdentifier: "com.jdegregorio.LuxaforPresence",
+                isRunningInput: true
+            ),
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 456,
+                bundleIdentifier: "com.apple.CoreSpeech",
+                isRunningInput: true
+            ),
+        ]
+
+        XCTAssertFalse(
+            CoreAudioInputProcessActivityProvider.hasExternalInput(
+                activities,
+                excluding: 123
+            )
+        )
+    }
+
+    func test_coreAudioActivityReduction_detectsUserAppAlongsideCoreSpeech() {
+        let activities = [
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 123,
+                bundleIdentifier: "com.jdegregorio.LuxaforPresence",
+                isRunningInput: true
+            ),
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 456,
+                bundleIdentifier: "com.apple.CoreSpeech",
+                isRunningInput: true
+            ),
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 789,
+                bundleIdentifier: "com.goodsnooze.MacWhisper",
+                isRunningInput: true
+            ),
+        ]
+
+        XCTAssertTrue(
+            CoreAudioInputProcessActivityProvider.hasExternalInput(
+                activities,
+                excluding: 123
+            )
+        )
+    }
+
+    func test_coreAudioActivityReduction_unknownBundleFailsOpen() {
+        let activities = [
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 456,
+                bundleIdentifier: nil,
+                isRunningInput: true
+            ),
+        ]
+
+        XCTAssertTrue(
+            CoreAudioInputProcessActivityProvider.hasExternalInput(
+                activities,
+                excluding: 123
+            )
+        )
+    }
+
     func test_coreAudioReportsOtherInputActive_returnsTrue() {
         let provider = FakeAudioInputProcessActivityProvider(result: true)
         let signal = MicCamSignal(

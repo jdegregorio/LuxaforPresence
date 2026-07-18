@@ -17,8 +17,27 @@ protocol AudioInputProcessActivityProviding {
 struct CoreAudioInputProcessActivityProvider: AudioInputProcessActivityProviding {
     struct ProcessActivity: Equatable {
         let processIdentifier: pid_t
+        let bundleIdentifier: String?
         let isRunningInput: Bool
+
+        init(
+            processIdentifier: pid_t,
+            bundleIdentifier: String? = nil,
+            isRunningInput: Bool
+        ) {
+            self.processIdentifier = processIdentifier
+            self.bundleIdentifier = bundleIdentifier
+            self.isRunningInput = isRunningInput
+        }
     }
+
+    /// CoreSpeech keeps an always-on voice-trigger stream after some dictation
+    /// sessions even when no user-facing client is listening. Treating that
+    /// system service as an external app makes LuxaforPresence start its own
+    /// sampler and prevents the sampler from ever becoming idle again.
+    private static let nonUserInputBundleIdentifiers: Set<String> = [
+        "com.apple.CoreSpeech",
+    ]
 
     func isInputActive(excluding processIdentifier: pid_t) -> Bool? {
         guard let processObjects = processObjectIDs() else { return nil }
@@ -32,6 +51,7 @@ struct CoreAudioInputProcessActivityProvider: AudioInputProcessActivityProviding
             activities.append(
                 ProcessActivity(
                     processIdentifier: pid,
+                    bundleIdentifier: bundleIdentifier(for: processObject),
                     isRunningInput: isRunningInput
                 )
             )
@@ -48,7 +68,9 @@ struct CoreAudioInputProcessActivityProvider: AudioInputProcessActivityProviding
         excluding processIdentifier: pid_t
     ) -> Bool {
         activities.contains {
-            $0.processIdentifier != processIdentifier && $0.isRunningInput
+            $0.processIdentifier != processIdentifier
+                && $0.isRunningInput
+                && !nonUserInputBundleIdentifiers.contains($0.bundleIdentifier ?? "")
         }
     }
 
@@ -112,6 +134,28 @@ struct CoreAudioInputProcessActivityProvider: AudioInputProcessActivityProviding
             &value
         )
         return status == noErr ? value : nil
+    }
+
+    private func bundleIdentifier(for processObject: AudioObjectID) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioProcessPropertyBundleID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(processObject, &address) else { return nil }
+
+        var value: Unmanaged<CFString>?
+        var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        let status = AudioObjectGetPropertyData(
+            processObject,
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &value
+        )
+        guard status == noErr, let value else { return nil }
+        return value.takeRetainedValue() as String
     }
 
     private func isRunningInput(for processObject: AudioObjectID) -> Bool? {
