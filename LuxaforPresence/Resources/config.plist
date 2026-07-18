@@ -24,6 +24,14 @@
     <real>300</real>
     <key>voiceCooldownSeconds</key>
     <real>300</real>
+    <key>availableColor</key>
+    <string>#000000</string>
+    <key>zoomQuietColor</key>
+    <string>#FFFF00</string>
+    <key>recentVoiceColor</key>
+    <string>#FF0000</string>
+    <key>voiceCooldownColor</key>
+    <string>#FF8C00</string>
     <key>localOutputHeartbeatEnabled</key>
     <false/>
     <key>localOutputReassertSeconds</key>

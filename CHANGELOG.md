@@ -4,11 +4,20 @@ All notable changes to LuxaforPresence will be documented here.
 
 ## Unreleased
 
+- Add an in-app Settings window for behavior, presence colors, connection, and advanced signal/output controls.
+- Make Available, Zoom Quiet, Recent Signal, and Cooldown colors independently configurable.
+- Expose both Recent Signal and Cooldown durations with an explanation of the transition timeline and one-click defaults restoration.
+- Replace the ambiguous timer reset menu item with **Clear Recent Signal & Cooldown**.
+- Remove the obsolete animated-output implementation, timer, configuration aliases, tests, and requirements document.
+- Normalize saved settings to the supported schema and apply them immediately without restarting.
+- Package this backward-compatible feature set as version `1.9.0`.
+
+## [1.8.1] – 2026-07-17
+
 - Detect microphone input activity for any application through Core Audio's per-process input state, with an AVFoundation compatibility fallback.
 - Treat sustained non-silent input energy as activity without classifying speech or inspecting audio content, using a lower `0.001` default RMS threshold.
 - Show microphone authorization explicitly in menu diagnostics and structured logs.
 - Use solid red for recent signal, solid orange for cooldown, and solid yellow for a quiet Zoom session.
-- Package the microphone detection fix as version `1.8.1`.
 
 ## [1.8.0] – 2026-07-14
 

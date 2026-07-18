@@ -17,12 +17,21 @@ final class LuxaforColorTests: XCTestCase {
         XCTAssertEqual(LuxaforColor.red.applyingBrightness(.infinity), .red)
     }
 
-    func test_signalTimeline_usesDistinctSolidColors() {
-        XCTAssertEqual(PresenceState.voiceRecent.lightOutput, .solid(.red))
-        XCTAssertEqual(PresenceState.voiceCooldown.lightOutput, .solid(.orange))
-        XCTAssertEqual(PresenceState.zoomQuiet.lightOutput, .solid(.yellow))
-        XCTAssertEqual(PresenceState.voiceRecent.lightOutput.displayName, "Solid Red")
-        XCTAssertEqual(PresenceState.voiceCooldown.lightOutput.displayName, "Solid Orange")
+    func test_hexString_acceptsCommonRGBFormatsAndNormalizesOutput() {
+        XCTAssertEqual(LuxaforColor(hexString: " #aB10fF "), .init(red: 171, green: 16, blue: 255))
+        XCTAssertEqual(LuxaforColor(hexString: "ABCDEF")?.localHex, "#ABCDEF")
+        XCTAssertNil(LuxaforColor(hexString: "#12345"))
+        XCTAssertNil(LuxaforColor(hexString: "#GG0000"))
+    }
+
+    func test_defaultSignalTimeline_usesDistinctSolidColors() {
+        let config = PresenceEngine.Config(values: [:])
+
+        XCTAssertEqual(config.lightOutput(for: .voiceRecent), .solid(.red))
+        XCTAssertEqual(config.lightOutput(for: .voiceCooldown), .solid(.orange))
+        XCTAssertEqual(config.lightOutput(for: .zoomQuiet), .solid(.yellow))
+        XCTAssertEqual(config.lightOutput(for: .voiceRecent).displayName, "Solid Red (#FF0000)")
+        XCTAssertEqual(config.lightOutput(for: .voiceCooldown).displayName, "Solid Orange (#FF8C00)")
         XCTAssertEqual(LuxaforColor.orange.hex, "FF8C00")
         XCTAssertEqual(
             LuxaforColor.orange.applyingBrightness(0.7),

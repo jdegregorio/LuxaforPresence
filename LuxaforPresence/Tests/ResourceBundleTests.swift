@@ -83,6 +83,10 @@ final class ResourceBundleTests: XCTestCase {
         XCTAssertFalse(config.localOutputHeartbeatEnabled)
         XCTAssertEqual(config.localOutputReassertSeconds, 30)
         XCTAssertEqual(config.outputBrightness, 0.7)
+        XCTAssertEqual(config.availableColor, .off)
+        XCTAssertEqual(config.zoomQuietColor, .yellow)
+        XCTAssertEqual(config.recentVoiceColor, .red)
+        XCTAssertEqual(config.voiceCooldownColor, .orange)
     }
 
     func test_appResourceBundle_containsConfigAndStatusIcons() {
