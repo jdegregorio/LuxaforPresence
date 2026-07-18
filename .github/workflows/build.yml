@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - main
-    tags:
-      - v*
   pull_request:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the current main version if its DMG is missing
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -20,6 +24,8 @@ env:
 jobs:
   build_and_test:
     runs-on: macos-26
+    outputs:
+      app_version: ${{ steps.app_version.outputs.value }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -42,6 +48,22 @@ jobs:
 
       - name: Set build env
         run: echo "CLANG_MODULE_CACHE_PATH=$RUNNER_TEMP/clang-module-cache" >> "$GITHUB_ENV"
+
+      - name: Validate app version
+        id: app_version
+        run: |
+          INFO_PLIST=LuxaforPresence/Info.plist
+          RELEASE_VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$INFO_PLIST")"
+          BUILD_VERSION="$(plutil -extract CFBundleVersion raw -o - "$INFO_PLIST")"
+          if [[ "$RELEASE_VERSION" != "$BUILD_VERSION" ]]; then
+            echo "CFBundleShortVersionString and CFBundleVersion must match." >&2
+            exit 1
+          fi
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "App version must use MAJOR.MINOR.PATCH format." >&2
+            exit 1
+          fi
+          echo "value=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Show SDK and toolchain
         run: |
@@ -86,17 +108,61 @@ jobs:
         env:
           CLANG_MODULE_CACHE_PATH: ${{ env.CLANG_MODULE_CACHE_PATH }}
 
-  build_dmg:
-    if: startsWith(github.ref, 'refs/tags/v')
+  publish_release:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release)
     needs: build_and_test
+    permissions:
+      contents: write
     runs-on: macos-26
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v${{ needs.build_and_test.outputs.app_version }}
     steps:
+      - name: Check release state
+        id: release_state
+        run: |
+          RELEASE_JSON="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,isDraft 2>/dev/null || true)"
+          if [[ -n "$RELEASE_JSON" ]] && jq -e '
+            ([.assets[].name] | index("LuxaforPresence.dmg")) and
+            ([.assets[].name] | index("LuxaforPresence.dmg.sha256"))
+          ' <<<"$RELEASE_JSON" >/dev/null; then
+            echo "$RELEASE_TAG already contains the DMG and checksum; nothing to publish."
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "required=true" >> "$GITHUB_OUTPUT"
+          if [[ -n "$RELEASE_JSON" ]]; then
+            echo "release_exists=true" >> "$GITHUB_OUTPUT"
+            if jq -e '.isDraft' <<<"$RELEASE_JSON" >/dev/null; then
+              echo "release_is_draft=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "release_is_draft=false" >> "$GITHUB_OUTPUT"
+            fi
+            echo "checkout_ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --tags \
+            "https://github.com/$GITHUB_REPOSITORY.git" \
+            "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "checkout_ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+            echo "checkout_ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.release_state.outputs.required == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ steps.release_state.outputs.checkout_ref }}
           submodules: true
 
       - name: Cache build artifacts
+        if: steps.release_state.outputs.required == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -106,68 +172,68 @@ jobs:
           restore-keys: ${{ runner.os }}-swift-
 
       - name: Select Xcode
+        if: steps.release_state.outputs.required == 'true'
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: "26.1"
 
       - name: Set build env
+        if: steps.release_state.outputs.required == 'true'
         run: echo "CLANG_MODULE_CACHE_PATH=$RUNNER_TEMP/clang-module-cache" >> "$GITHUB_ENV"
 
-      - name: Build release binary
-        run: swift build $SWIFT_BUILD_FLAGS
+      - name: Build and package ad-hoc DMG
+        if: steps.release_state.outputs.required == 'true'
+        run: ./scripts/package-dmg.sh -c release -n LuxaforPresence
         env:
           CLANG_MODULE_CACHE_PATH: ${{ env.CLANG_MODULE_CACHE_PATH }}
 
-      - name: Import Developer ID certificate
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          BUILD_CERTIFICATE_PASSWORD: ${{ secrets.BUILD_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      - name: Verify release artifact
+        if: steps.release_state.outputs.required == 'true'
         run: |
-          : "${BUILD_CERTIFICATE_BASE64:?Missing BUILD_CERTIFICATE_BASE64 secret}"
-          : "${BUILD_CERTIFICATE_PASSWORD:?Missing BUILD_CERTIFICATE_PASSWORD secret}"
-          : "${KEYCHAIN_PASSWORD:?Missing KEYCHAIN_PASSWORD secret}"
-          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/release-signing.keychain-db"
-          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$BUILD_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-          security default-keychain -d user -s "$KEYCHAIN_PATH"
-          echo "RELEASE_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          INFO_PLIST=dist/LuxaforPresence.app/Contents/Info.plist
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$INFO_PLIST")" = "${RELEASE_TAG#v}"
+          test "$(plutil -extract CFBundleVersion raw -o - "$INFO_PLIST")" = "${RELEASE_TAG#v}"
+          codesign --verify --deep --strict --verbose=2 dist/LuxaforPresence.app
+          codesign -d --verbose=4 dist/LuxaforPresence.app 2>&1 | grep -q '^Signature=adhoc$'
+          hdiutil verify dist/LuxaforPresence.dmg
+          (cd dist && shasum -a 256 LuxaforPresence.dmg > LuxaforPresence.dmg.sha256)
 
-      - name: Configure notarization credentials
+      - name: Publish GitHub release
+        if: steps.release_state.outputs.required == 'true'
         env:
-          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
-          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
-          NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+          RELEASE_EXISTS: ${{ steps.release_state.outputs.release_exists }}
+          RELEASE_IS_DRAFT: ${{ steps.release_state.outputs.release_is_draft }}
+          TAG_EXISTS: ${{ steps.release_state.outputs.tag_exists }}
         run: |
-          : "${NOTARY_APPLE_ID:?Missing NOTARY_APPLE_ID secret}"
-          : "${NOTARY_TEAM_ID:?Missing NOTARY_TEAM_ID secret}"
-          : "${NOTARY_APP_PASSWORD:?Missing NOTARY_APP_PASSWORD secret}"
-          xcrun notarytool store-credentials LuxaforPresence-CI \
-            --apple-id "$NOTARY_APPLE_ID" \
-            --team-id "$NOTARY_TEAM_ID" \
-            --password "$NOTARY_APP_PASSWORD"
-
-      - name: Sign, notarize, and package dmg
-        env:
-          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
-          NOTARY_PROFILE: LuxaforPresence-CI
-        run: ./scripts/release-dmg.sh -c release -n LuxaforPresence
-
-      - name: Clean up signing keychain
-        if: always()
-        run: |
-          if [[ -n "${RELEASE_KEYCHAIN_PATH:-}" ]]; then
-            security delete-keychain "$RELEASE_KEYCHAIN_PATH" || true
+          RELEASE_NOTES="This DMG is ad-hoc signed and is intended for personal use. macOS may require Control-click → Open or approval in System Settings → Privacy & Security. See DIST.md for limitations and the future trusted-release requirements."
+          if [[ "$RELEASE_EXISTS" == "true" ]]; then
+            gh release upload "$RELEASE_TAG" \
+              dist/LuxaforPresence.dmg \
+              dist/LuxaforPresence.dmg.sha256 \
+              --clobber \
+              --repo "$GITHUB_REPOSITORY"
+            if [[ "$RELEASE_IS_DRAFT" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" \
+                --draft=false \
+                --latest \
+                --repo "$GITHUB_REPOSITORY"
+            fi
+          elif [[ "$TAG_EXISTS" == "true" ]]; then
+            gh release create "$RELEASE_TAG" \
+              dist/LuxaforPresence.dmg \
+              dist/LuxaforPresence.dmg.sha256 \
+              --verify-tag \
+              --generate-notes \
+              --notes "$RELEASE_NOTES" \
+              --latest \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" \
+              dist/LuxaforPresence.dmg \
+              dist/LuxaforPresence.dmg.sha256 \
+              --target "$GITHUB_SHA" \
+              --generate-notes \
+              --notes "$RELEASE_NOTES" \
+              --latest \
+              --repo "$GITHUB_REPOSITORY"
           fi
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: LuxaforPresence-${{ github.ref_name }}
-          path: dist/LuxaforPresence.dmg

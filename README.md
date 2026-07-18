@@ -40,7 +40,7 @@ LuxaforPresence depends on the official Luxafor desktop app. Complete these step
 2. Connect the Flag by USB and confirm the Luxafor app reports **Device connected**.
 3. In the Luxafor app, open **Settings → Incoming Webhook** and enable **Incoming Local Webhooks**.
 4. Set the webhook port to `5383` and the security token to `luxafor`, or record your existing values so you can put the same values in LuxaforPresence.
-5. Open the LuxaforPresence DMG, drag **LuxaforPresence.app** onto **Applications**, eject the DMG, and launch the copy in `/Applications`.
+5. [Download the latest LuxaforPresence DMG](https://github.com/jdegregorio/LuxaforPresence/releases/latest/download/LuxaforPresence.dmg), drag **LuxaforPresence.app** onto **Applications**, eject the DMG, and launch the copy in `/Applications`.
 6. Approve Microphone access when macOS asks.
 7. Open the LuxaforPresence menu-bar icon and confirm it reports **Other App Input: Not In Use** and **Signal Sampling: Idle** while no other app is using a microphone.
 8. Select a manual color override to confirm the Flag responds, then return the menu to **Automatic**.
@@ -86,7 +86,7 @@ If the Luxafor app uses a different port or token, update the Local webhook fiel
 
 ## 2. Install LuxaforPresence
 
-1. Double-click `LuxaforPresence-1.9.2.dmg`.
+1. Double-click `LuxaforPresence.dmg`.
 2. Drag **LuxaforPresence.app** onto the **Applications** shortcut in the DMG.
 3. Eject the DMG.
 4. Open `/Applications` in Finder and launch **LuxaforPresence** from there.
@@ -95,9 +95,9 @@ LuxaforPresence is a menu-bar-only app. It does not open a normal window or appe
 
 The drag-to-Applications window appears only when you open the `.dmg` file, normally from **Downloads**. Clicking `LuxaforPresence.app` in Applications starts the already-installed menu-bar app; it does not show the installer again.
 
-### Local development build warning
+### Ad-hoc release warning
 
-A Developer ID-signed and notarized release should open normally. A locally built or ad-hoc-signed DMG is not notarized and macOS may block its first launch. For a build you created or received from a trusted source, Control-click the app in Finder and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway** after the blocked launch. Do not bypass Gatekeeper for an artifact you do not trust.
+Current GitHub Releases and locally packaged DMGs are ad-hoc signed and are not notarized by Apple. macOS may block the first launch. For a build from this repository that you trust, Control-click the app in Finder and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway** after the blocked launch. Do not bypass Gatekeeper for an artifact you do not trust. See [DIST.md](DIST.md) for the complete limitations and the requirements for a future Developer ID-signed release.
 
 Replacing an ad-hoc-signed development build also changes its code identity, so macOS may ask for Microphone approval again even when an older LuxaforPresence entry still appears enabled. The menu reports **Microphone Permission: Waiting for Approval** until the current build is approved. This repeat prompt does not occur across properly Developer ID-signed releases from the same developer.
 
@@ -383,13 +383,13 @@ For restricted build environments with unwritable home-directory caches:
 CLANG_MODULE_CACHE_PATH=$PWD/.cache swift build --disable-sandbox
 ```
 
-Create a release app and local DMG:
+Create the same ad-hoc-signed app and DMG used by the current personal release workflow:
 
 ```bash
-./scripts/package-dmg.sh -c release -n LuxaforPresence-1.9.2
+./scripts/package-dmg.sh -c release -n LuxaforPresence
 ```
 
-Outputs are written under `dist/`. The packaging script creates an ad-hoc-signed development artifact with the microphone entitlement. For trusted distribution, follow [DIST.md](DIST.md) to Developer ID-sign, notarize, staple, and verify the app and DMG.
+Outputs are written under `dist/`. The packaging script includes the microphone entitlement but does not provide an identified-developer signature or Apple notarization. Versioned builds merged to `main` publish this DMG and its SHA-256 file on GitHub automatically. See [DIST.md](DIST.md) for the current release behavior, its limitations, and the future trusted-distribution checklist.
 
 ## License
 
