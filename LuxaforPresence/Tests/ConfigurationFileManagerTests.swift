@@ -45,11 +45,10 @@ final class ConfigurationFileManagerTests: XCTestCase {
         )
     }
 
-    func test_save_replacesUnrecognizedKeysInExistingConfiguration() throws {
+    func test_save_migratesOlderRecentDurationAndRemovesObsoleteKey() throws {
         let configurationURL = temporaryDirectoryURL.appendingPathComponent("config.plist")
         let oldValues: [String: Any] = [
-            "recentVoiceSeconds": 10,
-            "obsoleteKey": "remove me",
+            "recentVoiceBlinkSeconds": 10.0,
         ]
         try writeConfiguration(oldValues, to: configurationURL)
         let manager = ConfigurationFileManager(
@@ -57,11 +56,11 @@ final class ConfigurationFileManagerTests: XCTestCase {
             alternateConfigurationURLs: []
         )
 
-        try manager.save(PresenceEngine.Config(values: ["recentVoiceSeconds": 20.0]))
+        try manager.save(PresenceEngine.Config(values: oldValues))
 
         let values = try loadConfiguration(at: configurationURL)
-        XCTAssertEqual(values["recentVoiceSeconds"] as? Double, 20)
-        XCTAssertNil(values["obsoleteKey"])
+        XCTAssertEqual(values["recentVoiceSeconds"] as? Double, 10)
+        XCTAssertNil(values["recentVoiceBlinkSeconds"])
     }
 
     func test_save_preservesExistingApplicationSupportLocation() throws {

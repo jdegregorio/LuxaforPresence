@@ -155,6 +155,25 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(config.voiceCooldownSeconds, 10.25)
     }
 
+    func test_init_preservesOlderRecentDurationForSettingsMigration() {
+        let config = PresenceEngine.Config(values: [
+            "recentVoiceBlinkSeconds": 12.5,
+        ])
+
+        XCTAssertEqual(config.recentVoiceSeconds, 12.5)
+        XCTAssertNil(config.propertyListValues["recentVoiceBlinkSeconds"])
+        XCTAssertEqual(config.propertyListValues["recentVoiceSeconds"] as? Double, 12.5)
+    }
+
+    func test_init_prefersCurrentRecentDurationDuringSettingsMigration() {
+        let config = PresenceEngine.Config(values: [
+            "recentVoiceSeconds": 25.0,
+            "recentVoiceBlinkSeconds": 12.5,
+        ])
+
+        XCTAssertEqual(config.recentVoiceSeconds, 25)
+    }
+
     func test_init_acceptsConfiguredOutputBrightness() {
         let config = PresenceEngine.Config(values: [
             "outputBrightness": 0.45,

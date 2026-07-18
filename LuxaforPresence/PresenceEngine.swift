@@ -138,7 +138,7 @@ final class PresenceEngine {
                     logger.error("Invalid vadMinimumActiveMilliseconds; expected a finite value of at least \(Self.minimumVadMinimumActiveMilliseconds, privacy: .public) milliseconds. Using \(Self.defaultVadMinimumActiveMilliseconds, privacy: .public) milliseconds.")
                 }
             }
-            if let value = values["recentVoiceSeconds"] {
+            if let value = values["recentVoiceSeconds"] ?? values["recentVoiceBlinkSeconds"] {
                 if let duration = Self.nonNegativeFiniteDuration(from: value) {
                     recentVoiceSeconds = duration
                 } else {
