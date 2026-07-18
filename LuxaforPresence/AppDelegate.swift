@@ -4,9 +4,10 @@ import OSLog
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var timer: Timer?
-    private let engine = PresenceEngine()
+    private var engine = PresenceEngine()
     private let configurationFileManager = ConfigurationFileManager()
     private let launchAtLogin: LaunchAtLoginControlling = LaunchAtLoginController()
+    private var settingsWindowController: SettingsWindowController?
     private let logger = Logger(
         subsystem: "com.jdegregorio.LuxaforPresence",
         category: "AppDelegate"
@@ -33,24 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         updateStatusIcon(.unknown)
         buildMenu()
-
-        engine.onStateChange = { [weak self] state in
-            self?.currentState = state
-            self?.updateStatusIcon(state)
-            self?.refreshDiagnostics()
-        }
-        engine.onSnapshot = { [weak self] snapshot in
-            self?.latestSnapshot = snapshot
-            self?.refreshDiagnostics()
-        }
-        engine.onOutputChange = { [weak self] output in
-            self?.currentOutput = output
-            self?.refreshDiagnostics()
-        }
-        engine.onLocalWebhookReachabilityChange = { [weak self] reachable in
-            self?.localWebhookReachable = reachable
-            self?.refreshDiagnostics()
-        }
+        configureEngineCallbacks()
 
         let workspaceNotifications = NSWorkspace.shared.notificationCenter
         workspaceNotifications.addObserver(
@@ -108,34 +92,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         availableItem = addMenuItem(
             to: menu,
-            title: "Available / Off",
+            title: menuTitle(for: .available),
             action: #selector(forceAvailable),
             keyEquivalent: "o"
         )
         zoomQuietItem = addMenuItem(
             to: menu,
-            title: "Zoom Quiet / Yellow",
+            title: menuTitle(for: .zoomQuiet),
             action: #selector(forceZoomQuiet),
             keyEquivalent: "y"
         )
         voiceRecentItem = addMenuItem(
             to: menu,
-            title: "Signal Recent / Solid Red",
+            title: menuTitle(for: .voiceRecent),
             action: #selector(forceVoiceRecent),
             keyEquivalent: "r"
         )
         voiceCooldownItem = addMenuItem(
             to: menu,
-            title: "Signal Cooldown / Solid Orange",
+            title: menuTitle(for: .voiceCooldown),
             action: #selector(forceVoiceCooldown),
             keyEquivalent: "c"
         )
-        addMenuItem(
+        let clearSignalItem = addMenuItem(
             to: menu,
-            title: "Reset Signal Timer",
-            action: #selector(resetVoiceTimer),
+            title: "Clear Recent Signal & Cooldown",
+            action: #selector(clearSignalTimeline),
             keyEquivalent: ""
         )
+        clearSignalItem.toolTip = "Forget the last detected input signal. Automatic mode reevaluates immediately."
         updateManualSelection()
 
         menu.addItem(.separator())
@@ -147,8 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         addMenuItem(
             to: menu,
-            title: "Open Configuration File…",
-            action: #selector(openConfigurationFile),
+            title: "Settings…",
+            action: #selector(openSettings),
             keyEquivalent: ","
         )
         menu.addItem(.separator())
@@ -167,6 +152,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         statusItem.menu = menu
         refreshDiagnostics()
+    }
+
+    private func configureEngineCallbacks() {
+        engine.onStateChange = { [weak self] state in
+            self?.currentState = state
+            self?.updateStatusIcon(state)
+            self?.refreshDiagnostics()
+        }
+        engine.onSnapshot = { [weak self] snapshot in
+            self?.latestSnapshot = snapshot
+            self?.refreshDiagnostics()
+        }
+        engine.onOutputChange = { [weak self] output in
+            self?.currentOutput = output
+            self?.refreshDiagnostics()
+        }
+        engine.onLocalWebhookReachabilityChange = { [weak self] reachable in
+            self?.localWebhookReachable = reachable
+            self?.refreshDiagnostics()
+        }
+    }
+
+    private func menuTitle(for state: PresenceState) -> String {
+        let color: LuxaforColor
+        switch state {
+        case .available:
+            color = engine.config.availableColor
+        case .zoomQuiet:
+            color = engine.config.zoomQuietColor
+        case .voiceRecent:
+            color = engine.config.recentVoiceColor
+        case .voiceCooldown:
+            color = engine.config.voiceCooldownColor
+        case .unknown:
+            return state.displayName
+        }
+        return "\(state.displayName) / \(color.displayName)"
     }
 
     private func schedulePollingTimer() {
@@ -290,10 +312,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func forceVoiceRecent() { applyManualState(.voiceRecent) }
     @objc private func forceVoiceCooldown() { applyManualState(.voiceCooldown) }
 
-    @objc private func resetVoiceTimer() {
+    @objc private func clearSignalTimeline() {
         latestSnapshot = nil
         refreshDiagnostics()
-        engine.resetVoiceTimer()
+        engine.clearSignalTimeline()
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -333,24 +355,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateLaunchAtLoginItem()
     }
 
-    @objc private func openConfigurationFile() {
-        do {
-            let configurationURL = try configurationFileManager.createFromTemplateIfNeeded()
-            NSWorkspace.shared.activateFileViewerSelecting([configurationURL])
-            logger.info("Opened the user configuration file in Finder")
-            let alert = NSAlert()
-            alert.messageText = "Restart After Editing"
-            alert.informativeText = "LuxaforPresence loads configuration when it starts. After saving your changes, quit and reopen the app to apply them."
-            alert.alertStyle = .informational
-            alert.runModal()
-        } catch {
-            logger.error("Unable to prepare the user configuration file: \(error.localizedDescription, privacy: .public)")
-            let alert = NSAlert()
-            alert.messageText = "Unable to Open Configuration"
-            alert.informativeText = error.localizedDescription
-            alert.alertStyle = .warning
-            alert.runModal()
+    @objc private func openSettings() {
+        if let settingsWindowController,
+           settingsWindowController.window?.isVisible == true {
+            settingsWindowController.showWindow(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
         }
+
+        let controller = SettingsWindowController(
+            config: engine.config,
+            onSave: { [weak self] config in
+                guard let self else { return }
+                try self.saveAndApply(config)
+            }
+        )
+        settingsWindowController = controller
+        controller.showWindow(nil)
+        controller.window?.center()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func saveAndApply(_ config: PresenceEngine.Config) throws {
+        let configurationURL = try configurationFileManager.save(config)
+        logger.info("Saved normalized settings at \(configurationURL.path(percentEncoded: false), privacy: .public)")
+
+        timer?.invalidate()
+        timer = nil
+        let retainedManualState = manualState
+        engine.suspendOutput()
+
+        currentState = .unknown
+        currentOutput = nil
+        localWebhookReachable = nil
+        latestSnapshot = nil
+        manualState = retainedManualState
+        engine = PresenceEngine(config: config)
+        configureEngineCallbacks()
+        updateStatusIcon(.unknown)
+        buildMenu()
+        updateLaunchAtLoginItem()
+        engine.prepare()
+        if let retainedManualState {
+            engine.force(retainedManualState)
+        } else {
+            engine.tick()
+        }
+        schedulePollingTimer()
+        logger.log("Applied saved settings and requested immediate signal reevaluation")
     }
 
     @objc private func workspaceWillSleep(_ notification: Notification) {

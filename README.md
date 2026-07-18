@@ -13,8 +13,8 @@ The recommended setup uses only local transport. It does **not** require a Luxaf
 | Incoming Local Webhooks enabled | Required | Required for the recommended local transport. |
 | Matching webhook port and security token | Required | The defaults are port `5383` and token `luxafor`. No config file is needed when both apps use those values. |
 | LuxaforPresence in `/Applications` or `~/Applications` | Required | Needed for normal launching, permissions, and launch-at-login support. `/Applications` is recommended. |
-| Microphone permission | Required for signal detection | Without it, Zoom detection and manual controls still work, but input energy cannot select the red and orange states. |
-| `~/.config/LuxaforPresence/config.plist` | Optional | Create it only to change a default port, token, timing, threshold, or transport mode. |
+| Microphone permission | Required for signal detection | Without it, Zoom detection and manual controls still work, but input energy cannot select the Recent Signal and Cooldown states. |
+| Settings | Optional | Use the menu-bar app's **Settings…** window to change colors, timing, detection, connection, or advanced output behavior. |
 | `remoteWebhookUserId` | Optional | Used only when `transportMode` is `remote`. Leave `YOUR_USER_ID_HERE` unchanged for local transport. |
 | Zoom | Optional | Needed only for automatic Zoom detection. Microphone-based presence and manual controls work without Zoom. |
 | Launch at Login | Optional | Enable it if you want LuxaforPresence to start automatically. |
@@ -82,11 +82,11 @@ The Luxafor and LuxaforPresence values must match exactly. With the bundled defa
 http://127.0.0.1:5383/color
 ```
 
-If the Luxafor app uses a different port or token, update `localWebhookBaseUrl` or `localWebhookToken` in the LuxaforPresence configuration as described below.
+If the Luxafor app uses a different port or token, update the Local webhook fields under **LuxaforPresence → Settings… → Connection**.
 
 ## 2. Install LuxaforPresence
 
-1. Double-click `LuxaforPresence-1.8.1.dmg`.
+1. Double-click `LuxaforPresence-1.9.0.dmg`.
 2. Drag **LuxaforPresence.app** onto the **Applications** shortcut in the DMG.
 3. Eject the DMG.
 4. Open `/Applications` in Finder and launch **LuxaforPresence** from there.
@@ -117,19 +117,16 @@ If Microphone access was denied, enable LuxaforPresence later in **System Settin
 
 No user configuration file is required when the Luxafor desktop app uses port `5383` and token `luxafor`. LuxaforPresence uses its bundled local-transport defaults in that case.
 
-To create or edit a personal configuration:
+To change settings:
 
 1. Open the LuxaforPresence menu-bar menu.
-2. Choose **Open Configuration File…**.
-3. Edit the file revealed in Finder:
+2. Choose **Settings…**.
+3. Use **Behavior** to configure the Recent Signal → Cooldown timeline, **Colors** to choose the output for every state, **Connection** for Luxafor webhook settings, or **Advanced** for polling and signal qualification.
+4. Choose **Save**. The app writes a private user configuration, rebuilds its signal engine, and applies the settings immediately.
 
-   ```text
-   ~/.config/LuxaforPresence/config.plist
-   ```
+Choose **Restore Defaults…**, confirm, and then choose **Save** to reset every setting to the bundled defaults. Saving writes a complete normalized file, so obsolete or unknown keys from older configurations are removed. Existing configurations continue to load from `~/.config/LuxaforPresence/config.plist` or the older Application Support location, but normal setup no longer requires manual plist editing or an app restart.
 
-4. Save the file, quit LuxaforPresence, and launch it again. Configuration is loaded only at startup.
-
-The created file is readable only by the current user. The complete default configuration is:
+The saved file is readable only by the current user. The complete default configuration is:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -159,6 +156,14 @@ The created file is readable only by the current user. The complete default conf
     <real>300</real>
     <key>voiceCooldownSeconds</key>
     <real>300</real>
+    <key>availableColor</key>
+    <string>#000000</string>
+    <key>zoomQuietColor</key>
+    <string>#FFFF00</string>
+    <key>recentVoiceColor</key>
+    <string>#FF0000</string>
+    <key>voiceCooldownColor</key>
+    <string>#FF8C00</string>
     <key>localOutputHeartbeatEnabled</key>
     <false/>
     <key>localOutputReassertSeconds</key>
@@ -182,17 +187,21 @@ The created file is readable only by the current user. The complete default conf
 | `vadEnabled` | `true` | Enables local input-energy analysis while any other process has active microphone input. |
 | `vadThreshold` | `0.001` | RMS threshold separating digital silence from a real input signal. Valid range is greater than `0` through `1`. Raise it if room noise qualifies too easily. |
 | `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required to qualify an input signal. Minimum `250`. |
-| `recentVoiceSeconds` | `300` | Duration of the recent-signal red state. The legacy `recentVoiceBlinkSeconds` key is still accepted. |
-| `voiceCooldownSeconds` | `300` | Duration of the orange cooldown after the recent-signal state. |
+| `recentVoiceSeconds` | `300` | Seconds spent in Recent Signal after the last qualifying input. A new signal restarts this duration. |
+| `voiceCooldownSeconds` | `300` | Seconds spent in Cooldown after Recent Signal ends. Afterward the state becomes Zoom Quiet or Available. |
+| `availableColor` | `#000000` | Output used when no communication context is active. Black turns the device off. |
+| `zoomQuietColor` | `#FFFF00` | Output used for an active Zoom meeting without a recent or cooling-down signal. |
+| `recentVoiceColor` | `#FF0000` | Output used during the Recent Signal duration. |
+| `voiceCooldownColor` | `#FF8C00` | Output used during the Cooldown duration. |
 | `localOutputHeartbeatEnabled` | `false` | Advanced recovery option that periodically reasserts output. Keep disabled for the Luxafor desktop listener's best responsiveness. |
 | `localOutputReassertSeconds` | `30` | Heartbeat interval when `localOutputHeartbeatEnabled` is enabled. Minimum `5`. |
-| `outputBrightness` | `0.7` | Scales red, orange, and yellow RGB intensity per request. Use a value from `0` through `1`; `0.7` is 70% of full output. |
+| `outputBrightness` | `0.7` | Scales every configured RGB color per request. Use a value from `0` through `1`; `0.7` is 70% of full output. |
 
 Invalid numeric values are rejected at startup and replaced with safe defaults. Local plain-HTTP URLs are accepted only for loopback hosts such as `127.0.0.1` and `localhost`.
 
 ### Optional remote transport
 
-Local transport is recommended because it stays on the Mac. If local webhooks are unavailable, set `transportMode` to `remote` and replace `YOUR_USER_ID_HERE` with the Luxafor ID from the desktop app's Webhook tab. Remote transport sends only color commands through Luxafor's Webhook API; voice audio is never transmitted.
+Local transport is recommended because it stays on the Mac. If local webhooks are unavailable, select **Remote webhook** under **Settings… → Connection** and enter the Luxafor ID from the desktop app's Webhook tab. Remote transport sends only color commands through Luxafor's Webhook API; voice audio is never transmitted.
 
 ## 4. Verify the installation
 
@@ -201,7 +210,7 @@ Local transport is recommended because it stays on the Mac. If local webhooks ar
 With Zoom closed and no other application using a microphone, open the menu and expect:
 
 ```text
-Status: Available / Off
+Status: Available
 Output: Off
 Luxafor Webhook: Listening
 Zoom: Inactive
@@ -219,9 +228,9 @@ If the menu instead says **Luxafor Webhook: Not Listening — Check Luxafor Sett
 
 Use the menu's manual overrides before testing Zoom:
 
-1. Select **Zoom Quiet / Yellow**. The Flag should become solid yellow.
-2. Select **Signal Recent / Solid Red**. The Flag should become solid red.
-3. Select **Signal Cooldown / Solid Orange**. The Flag should become solid orange.
+1. Select **Zoom Quiet / Yellow (#FFFF00)**. The Flag should become solid yellow.
+2. Select **Signal Recent / Red (#FF0000)**. The Flag should become solid red.
+3. Select **Signal Cooldown / Orange (#FF8C00)**. The Flag should become solid orange.
 4. Select **Available / Off**. The Flag should turn off.
 5. Select **Automatic** to restore signal-based behavior.
 
@@ -253,25 +262,27 @@ LuxaforPresence measures RMS input energy; it does not classify speech or inspec
 
 ## Presence behavior
 
-| Light | Meaning |
+| Default output | Meaning |
 | --- | --- |
 | Off | No active Zoom meeting or qualifying signal in an active microphone context |
 | Solid yellow | Zoom is active without a recent or cooling-down input signal |
 | Solid red | A qualifying non-silent input signal occurred within `recentVoiceSeconds` |
 | Solid orange | The recent-signal period ended and `voiceCooldownSeconds` is still running |
 
-The red-to-orange timeline continues while either Zoom or another application's active microphone input keeps the communication context active. When both end, the light turns off immediately. A new qualifying signal restarts the red recent-signal period.
+The Recent Signal → Cooldown timeline continues while either Zoom or another application's active microphone input keeps the communication context active. When both end, the state becomes Available immediately. A new qualifying signal restarts Recent Signal. Every output color and both durations can be changed under **Settings…**.
 
 Manual choices take precedence over automatic detection and stop signal sampling:
 
 - Automatic
 - Available / Off
-- Zoom Quiet / Yellow
-- Signal Recent / Solid Red
-- Signal Cooldown / Solid Orange
-- Reset Signal Timer
+- Zoom Quiet / Yellow (#FFFF00)
+- Signal Recent / Red (#FF0000)
+- Signal Cooldown / Orange (#FF8C00)
+- Clear Recent Signal & Cooldown
 
-The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.8.1**.
+**Clear Recent Signal & Cooldown** forgets the last detected input signal. When Automatic is selected, the app reevaluates immediately; a manual override remains selected. It is useful after a false positive or when the light should leave Recent/Cooldown before their configured durations expire.
+
+The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.0**.
 
 ## Privacy and permissions
 
@@ -301,10 +312,6 @@ The user configuration in `~/.config/LuxaforPresence/config.plist` is outside th
 - Run the direct `curl` test above.
 - Return LuxaforPresence to **Automatic** after testing manual overrides.
 
-### Color changes are delayed after upgrading from 1.7.0
-
-Quit and reopen the official Luxafor desktop app once. Version 1.7.0 could leave many short-lived local-webhook connections retained in that app's listener; restarting clears them. Version 1.8.0 removes per-phase flashing traffic, keeps one health-check connection, isolates each semantic output command in a fresh session, and disables periodic output reassertion by default.
-
 ### LuxaforPresence launches but no window appears
 
 This is expected. LuxaforPresence is a menu-bar app with no Dock icon. Look on the right side of the menu bar; macOS may place less frequently used status items behind Control Center when space is limited.
@@ -318,7 +325,7 @@ If the menu says **Microphone Permission: Denied — Open Privacy Settings**, op
 - Open the menu and check **Other App Input** and **Signal Sampling**.
 - If **Other App Input: In Use**, another process still has active input I/O. Close Zoom, recording, dictation, meeting, and browser-call applications.
 - If **Signal Sampling: Idle**, LuxaforPresence has stopped its audio engine; macOS may briefly retain the indicator.
-- Set `vadEnabled` to `false` and restart to disable LuxaforPresence audio analysis entirely.
+- Turn off **Settings… → Behavior → Analyze microphone input energy** to disable LuxaforPresence audio analysis entirely.
 
 ### Another app uses the microphone but signal sampling stays idle
 
@@ -329,7 +336,7 @@ If the menu says **Microphone Permission: Denied — Open Privacy Settings**, op
 
 ### Zoom is active but the light stays off
 
-- Confirm `detectZoom` is `true`.
+- Confirm **Settings… → Behavior → Detect Zoom meetings** is enabled.
 - Wait at least one polling interval, two seconds by default.
 - Confirm the menu changes to **Zoom: Active**.
 - Clear any manual override by selecting **Automatic**.
@@ -379,7 +386,7 @@ CLANG_MODULE_CACHE_PATH=$PWD/.cache swift build --disable-sandbox
 Create a release app and local DMG:
 
 ```bash
-./scripts/package-dmg.sh -c release -n LuxaforPresence-1.8.1
+./scripts/package-dmg.sh -c release -n LuxaforPresence-1.9.0
 ```
 
 Outputs are written under `dist/`. The packaging script creates an ad-hoc-signed development artifact with the microphone entitlement. For trusted distribution, follow [DIST.md](DIST.md) to Developer ID-sign, notarize, staple, and verify the app and DMG.

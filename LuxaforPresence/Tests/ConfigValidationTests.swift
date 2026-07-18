@@ -11,6 +11,10 @@ final class ConfigValidationTests: XCTestCase {
             "voiceCooldownSeconds": -1,
             "localOutputReassertSeconds": 1,
             "outputBrightness": 1.01,
+            "availableColor": "not-a-color",
+            "zoomQuietColor": "#FFFF",
+            "recentVoiceColor": 123456,
+            "voiceCooldownColor": "#GG0000",
         ])
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.defaultPollInterval)
@@ -34,6 +38,13 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(
             config.outputBrightness,
             PresenceEngine.Config.defaultOutputBrightness
+        )
+        XCTAssertEqual(config.availableColor, PresenceEngine.Config.defaultAvailableColor)
+        XCTAssertEqual(config.zoomQuietColor, PresenceEngine.Config.defaultZoomQuietColor)
+        XCTAssertEqual(config.recentVoiceColor, PresenceEngine.Config.defaultRecentVoiceColor)
+        XCTAssertEqual(
+            config.voiceCooldownColor,
+            PresenceEngine.Config.defaultVoiceCooldownColor
         )
     }
 
@@ -144,29 +155,52 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(config.voiceCooldownSeconds, 10.25)
     }
 
-    func test_init_acceptsLegacyRecentVoiceDurationKey() {
-        let config = PresenceEngine.Config(values: [
-            "recentVoiceBlinkSeconds": 12.5,
-        ])
-
-        XCTAssertEqual(config.recentVoiceSeconds, 12.5)
-    }
-
-    func test_init_prefersNewRecentVoiceDurationKeyOverLegacyKey() {
-        let config = PresenceEngine.Config(values: [
-            "recentVoiceSeconds": 25.0,
-            "recentVoiceBlinkSeconds": 12.5,
-        ])
-
-        XCTAssertEqual(config.recentVoiceSeconds, 25.0)
-    }
-
     func test_init_acceptsConfiguredOutputBrightness() {
         let config = PresenceEngine.Config(values: [
             "outputBrightness": 0.45,
         ])
 
         XCTAssertEqual(config.outputBrightness, 0.45)
+    }
+
+    func test_init_acceptsConfiguredColorsWithOrWithoutHashPrefix() {
+        let config = PresenceEngine.Config(values: [
+            "availableColor": "112233",
+            "zoomQuietColor": "#445566",
+            "recentVoiceColor": "abcdef",
+            "voiceCooldownColor": "#010203",
+        ])
+
+        XCTAssertEqual(config.availableColor, LuxaforColor(red: 0x11, green: 0x22, blue: 0x33))
+        XCTAssertEqual(config.zoomQuietColor, LuxaforColor(red: 0x44, green: 0x55, blue: 0x66))
+        XCTAssertEqual(config.recentVoiceColor, LuxaforColor(red: 0xAB, green: 0xCD, blue: 0xEF))
+        XCTAssertEqual(config.voiceCooldownColor, LuxaforColor(red: 1, green: 2, blue: 3))
+    }
+
+    func test_propertyListValues_containsNormalizedSettingsOnly() {
+        let config = PresenceEngine.Config(values: [
+            "recentVoiceSeconds": 25.0,
+            "recentVoiceColor": "abcdef",
+        ])
+
+        XCTAssertEqual(config.propertyListValues["recentVoiceSeconds"] as? Double, 25)
+        XCTAssertEqual(config.propertyListValues["recentVoiceColor"] as? String, "#ABCDEF")
+        XCTAssertEqual(config.propertyListValues.count, 18)
+    }
+
+    func test_lightOutput_usesConfiguredColorForEveryOperationalState() {
+        let config = PresenceEngine.Config(values: [
+            "availableColor": "#010101",
+            "zoomQuietColor": "#020202",
+            "recentVoiceColor": "#030303",
+            "voiceCooldownColor": "#000000",
+        ])
+
+        XCTAssertEqual(config.lightOutput(for: .available), .solid(.init(red: 1, green: 1, blue: 1)))
+        XCTAssertEqual(config.lightOutput(for: .zoomQuiet), .solid(.init(red: 2, green: 2, blue: 2)))
+        XCTAssertEqual(config.lightOutput(for: .voiceRecent), .solid(.init(red: 3, green: 3, blue: 3)))
+        XCTAssertEqual(config.lightOutput(for: .voiceCooldown), .off)
+        XCTAssertEqual(config.lightOutput(for: .unknown), .off)
     }
 
     func test_init_acceptsZoomDetectionFlag() {

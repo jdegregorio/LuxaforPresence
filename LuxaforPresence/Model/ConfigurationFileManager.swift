@@ -1,21 +1,9 @@
 import Foundation
 
 struct ConfigurationFileManager {
-    enum ConfigurationError: LocalizedError {
-        case bundledTemplateMissing
-
-        var errorDescription: String? {
-            switch self {
-            case .bundledTemplateMissing:
-                return "The bundled configuration template is missing. Reinstall LuxaforPresence and try again."
-            }
-        }
-    }
-
     let configurationURL: URL
     private let fileManager: FileManager
     private let alternateConfigurationURLs: [URL]
-    private let bundledTemplateURL: () -> URL?
 
     init(
         configurationURL: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -24,38 +12,38 @@ struct ConfigurationFileManager {
         alternateConfigurationURLs: [URL] = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).map { $0.appendingPathComponent("LuxaforPresence/config.plist") },
-        bundledTemplateURL: @escaping () -> URL? = {
-            AppResourceBundle.bundle.url(forResource: "config", withExtension: "plist")
-        }
+        ).map { $0.appendingPathComponent("LuxaforPresence/config.plist") }
     ) {
         self.configurationURL = configurationURL
         self.fileManager = fileManager
         self.alternateConfigurationURLs = alternateConfigurationURLs
-        self.bundledTemplateURL = bundledTemplateURL
     }
 
-    func createFromTemplateIfNeeded() throws -> URL {
-        if fileManager.fileExists(atPath: configurationURL.path) {
-            return configurationURL
-        }
-        if let existingAlternateURL = alternateConfigurationURLs.first(where: {
-            fileManager.fileExists(atPath: $0.path)
-        }) {
-            return existingAlternateURL
-        }
-
-        let directoryURL = configurationURL.deletingLastPathComponent()
-        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-
-        guard let templateURL = bundledTemplateURL() else {
-            throw ConfigurationError.bundledTemplateMissing
-        }
-        try fileManager.copyItem(at: templateURL, to: configurationURL)
+    /// Writes a complete, normalized configuration and drops obsolete or
+    /// unrecognized keys from an older file.
+    @discardableResult
+    func save(_ config: PresenceEngine.Config) throws -> URL {
+        let destinationURL = existingConfigurationURL ?? configurationURL
+        try fileManager.createDirectory(
+            at: destinationURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: config.propertyListValues,
+            format: .xml,
+            options: 0
+        )
+        try data.write(to: destinationURL, options: .atomic)
         try fileManager.setAttributes(
             [.posixPermissions: NSNumber(value: Int16(0o600))],
-            ofItemAtPath: configurationURL.path
+            ofItemAtPath: destinationURL.path
         )
-        return configurationURL
+        return destinationURL
+    }
+
+    var existingConfigurationURL: URL? {
+        ([configurationURL] + alternateConfigurationURLs).first {
+            fileManager.fileExists(atPath: $0.path)
+        }
     }
 }

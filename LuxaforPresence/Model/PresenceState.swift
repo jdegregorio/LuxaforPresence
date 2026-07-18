@@ -8,13 +8,13 @@ enum PresenceState: String {
     var displayName: String {
         switch self {
         case .available:
-            return "Available (Off)"
+            return "Available"
         case .zoomQuiet:
-            return "Zoom Quiet (Yellow)"
+            return "Zoom Quiet"
         case .voiceRecent:
-            return "Signal Recent (Red)"
+            return "Signal Recent"
         case .voiceCooldown:
-            return "Signal Cooldown (Orange)"
+            return "Signal Cooldown"
         case .unknown:
             return "Unknown"
         }

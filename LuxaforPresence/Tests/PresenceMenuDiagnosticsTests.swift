@@ -25,8 +25,8 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(diagnostics.statusTitle, "Status: Signal Recent (Red)")
-        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Red")
+        XCTAssertEqual(diagnostics.statusTitle, "Status: Signal Recent")
+        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Red (#FF0000)")
         XCTAssertEqual(diagnostics.connectionTitle, "Luxafor Webhook: Checking…")
         XCTAssertEqual(diagnostics.zoomTitle, "Zoom: Active")
         XCTAssertEqual(diagnostics.microphonePermissionTitle, "Microphone Permission: Authorized")
@@ -60,7 +60,7 @@ final class PresenceMenuDiagnosticsTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Orange")
+        XCTAssertEqual(diagnostics.outputTitle, "Output: Solid Orange (#FF8C00)")
         XCTAssertEqual(diagnostics.lastVoiceTitle, "Last Signal: 7m ago")
         XCTAssertEqual(diagnostics.recentVoiceRemainingTitle, "Recent Signal Remaining: —")
         XCTAssertEqual(diagnostics.cooldownRemainingTitle, "Cooldown Remaining: 3m")

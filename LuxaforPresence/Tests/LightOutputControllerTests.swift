@@ -2,108 +2,51 @@ import XCTest
 @testable import LuxaforPresence
 
 final class LightOutputControllerTests: XCTestCase {
-    func test_blink_startsOnColorAndAlternatesOnOneInjectedTimer() {
+    func test_applySolidColor_sendsColorAndPublishesLogicalOutput() {
         let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
+        let controller = makeController(client: client)
         var outputs: [LightOutput] = []
         controller.onOutputChange = { outputs.append($0) }
 
-        controller.apply(.blink(color: .red, interval: 0.75))
+        controller.apply(.solid(.red))
 
-        XCTAssertEqual(controller.desiredOutput, .blink(color: .red, interval: 0.75))
-        XCTAssertEqual(outputs, [.blink(color: .red, interval: 0.75)])
-        XCTAssertEqual(client.actions, [.init(color: .red, userId: "user", force: false)])
-        XCTAssertEqual(timer.scheduledIntervals, [0.75])
-
-        timer.fire()
-        timer.fire()
-
+        XCTAssertEqual(controller.desiredOutput, .solid(.red))
+        XCTAssertEqual(outputs, [.solid(.red)])
         XCTAssertEqual(
             client.actions,
-            [
-                .init(color: .red, userId: "user", force: false),
-                .init(color: .off, userId: "user", force: false),
-                .init(color: .red, userId: "user", force: false),
-            ]
+            [.init(color: .red, userId: "user", force: false)]
         )
-        XCTAssertEqual(timer.scheduledIntervals, [0.75])
     }
 
-    func test_duplicateLogicalOutput_preservesCadenceAndSuppressesOutputCallback() {
+    func test_duplicateLogicalOutput_suppressesTransportAndCallback() {
         let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
+        let controller = makeController(client: client)
         var callbackCount = 0
         controller.onOutputChange = { _ in callbackCount += 1 }
-        let output = LightOutput.blink(color: .red, interval: 0.75)
 
-        controller.apply(output)
-        controller.apply(output)
+        controller.apply(.solid(.red))
+        controller.apply(.solid(.red))
 
         XCTAssertEqual(callbackCount, 1)
         XCTAssertEqual(client.actions.count, 1)
-        XCTAssertEqual(timer.scheduledIntervals, [0.75])
-        XCTAssertEqual(timer.cancelCount, 1)
-    }
-
-    func test_logicalTransitionWithSamePhysicalPhase_doesNotResendColor() {
-        let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
-        var outputs: [LightOutput] = []
-        controller.onOutputChange = { outputs.append($0) }
-
-        controller.apply(.blink(color: .red, interval: 0.75))
-        controller.apply(.solid(.red))
-
-        XCTAssertEqual(
-            outputs,
-            [.blink(color: .red, interval: 0.75), .solid(.red)]
-        )
-        XCTAssertEqual(client.actions, [.init(color: .red, userId: "user", force: false)])
-        XCTAssertNil(timer.handler)
-    }
-
-    func test_staleTimerCallbackCannotOverwriteNewerOutput() {
-        let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
-
-        controller.apply(.blink(color: .red, interval: 0.75))
-        let staleHandler = timer.handler
-        controller.apply(.solid(.yellow))
-        staleHandler?()
-
-        XCTAssertEqual(
-            client.actions,
-            [
-                .init(color: .red, userId: "user", force: false),
-                .init(color: .yellow, userId: "user", force: false),
-            ]
-        )
-        XCTAssertEqual(controller.desiredOutput, .solid(.yellow))
     }
 
     func test_suspendAcceptsNewLogicalOutputWithoutSendingUntilResume() {
         let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
+        let controller = makeController(client: client)
         var outputs: [LightOutput] = []
         controller.onOutputChange = { outputs.append($0) }
 
-        controller.apply(.blink(color: .red, interval: 0.75))
-        let staleHandler = timer.handler
+        controller.apply(.solid(.red))
         controller.suspend()
-        staleHandler?()
         controller.apply(.solid(.yellow))
 
-        XCTAssertEqual(client.actions, [.init(color: .red, userId: "user", force: false)])
-        XCTAssertEqual(controller.desiredOutput, .solid(.yellow))
         XCTAssertEqual(
-            outputs,
-            [.blink(color: .red, interval: 0.75), .solid(.yellow)]
+            client.actions,
+            [.init(color: .red, userId: "user", force: false)]
         )
+        XCTAssertEqual(controller.desiredOutput, .solid(.yellow))
+        XCTAssertEqual(outputs, [.solid(.red), .solid(.yellow)])
 
         controller.resume()
 
@@ -114,68 +57,39 @@ final class LightOutputControllerTests: XCTestCase {
                 .init(color: .yellow, userId: "user", force: true),
             ]
         )
-        XCTAssertNil(timer.handler)
     }
 
-    func test_resumeRestartsBlinkOnColorAndReplacesTimerSchedule() {
+    func test_reassertForcesCurrentColor() {
         let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
+        let controller = makeController(client: client)
 
-        controller.apply(.blink(color: .red, interval: 0.5))
-        timer.fire()
-        controller.suspend()
-        controller.resume()
-
-        XCTAssertEqual(
-            client.actions,
-            [
-                .init(color: .red, userId: "user", force: false),
-                .init(color: .off, userId: "user", force: false),
-                .init(color: .red, userId: "user", force: true),
-            ]
-        )
-        XCTAssertEqual(timer.scheduledIntervals, [0.5, 0.5])
-    }
-
-    func test_reassertForcesCurrentBlinkPhaseWithoutResettingCadence() {
-        let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
-
-        controller.apply(.blink(color: .red, interval: 0.75))
-        timer.fire()
+        controller.apply(.solid(.orange))
         controller.reassert()
 
         XCTAssertEqual(
             client.actions,
             [
-                .init(color: .red, userId: "user", force: false),
-                .init(color: .off, userId: "user", force: false),
-                .init(color: .off, userId: "user", force: true),
+                .init(color: .orange, userId: "user", force: false),
+                .init(color: .orange, userId: "user", force: true),
             ]
         )
-        XCTAssertEqual(timer.scheduledIntervals, [0.75])
     }
 
-    func test_shutdownCancelsBlinkForcesOffAndRejectsLaterWork() {
+    func test_shutdownForcesOffAndRejectsLaterWork() {
         let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
+        let controller = makeController(client: client)
         var outputs: [LightOutput] = []
         controller.onOutputChange = { outputs.append($0) }
 
-        controller.apply(.blink(color: .red, interval: 0.75))
-        let staleHandler = timer.handler
+        controller.apply(.solid(.red))
         controller.shutdown()
-        staleHandler?()
         controller.apply(.solid(.yellow))
         controller.reassert()
         controller.resume()
         controller.shutdown()
 
         XCTAssertEqual(controller.desiredOutput, .off)
-        XCTAssertEqual(outputs, [.blink(color: .red, interval: 0.75), .off])
+        XCTAssertEqual(outputs, [.solid(.red), .off])
         XCTAssertEqual(
             client.actions,
             [
@@ -183,43 +97,29 @@ final class LightOutputControllerTests: XCTestCase {
                 .init(color: .off, userId: "user", force: true),
             ]
         )
-        XCTAssertNil(timer.handler)
     }
 
     func test_reentrantOutputCallbackCannotActivateSupersededOutput() {
         let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
         var controller: LightOutputController!
-        controller = makeController(client: client, timer: timer)
+        controller = makeController(client: client)
         controller.onOutputChange = { output in
-            if output == .blink(color: .red, interval: 0.75) {
+            if output == .solid(.red) {
                 controller.apply(.solid(.yellow))
             }
         }
 
-        controller.apply(.blink(color: .red, interval: 0.75))
+        controller.apply(.solid(.red))
 
         XCTAssertEqual(controller.desiredOutput, .solid(.yellow))
-        XCTAssertEqual(client.actions, [.init(color: .yellow, userId: "user", force: false)])
-        XCTAssertTrue(timer.scheduledIntervals.isEmpty)
+        XCTAssertEqual(
+            client.actions,
+            [.init(color: .yellow, userId: "user", force: false)]
+        )
     }
 
-    func test_invalidBlinkIntervalDoesNotScheduleBusyTimer() {
-        let client = ControllerFakeClient()
-        let timer = ControllerFakeTimer()
-        let controller = makeController(client: client, timer: timer)
-
-        controller.apply(.blink(color: .red, interval: 0))
-
-        XCTAssertEqual(client.actions, [.init(color: .red, userId: "user", force: false)])
-        XCTAssertTrue(timer.scheduledIntervals.isEmpty)
-    }
-
-    private func makeController(
-        client: ControllerFakeClient,
-        timer: ControllerFakeTimer
-    ) -> LightOutputController {
-        LightOutputController(client: client, userId: "user", timer: timer)
+    private func makeController(client: ControllerFakeClient) -> LightOutputController {
+        LightOutputController(client: client, userId: "user")
     }
 }
 
@@ -234,25 +134,5 @@ private final class ControllerFakeClient: LuxaforClientProtocol {
 
     func setSolidColor(_ color: LuxaforColor, userId: String, force: Bool) {
         actions.append(.init(color: color, userId: userId, force: force))
-    }
-}
-
-private final class ControllerFakeTimer: LightOutputTimerProtocol {
-    private(set) var scheduledIntervals: [TimeInterval] = []
-    private(set) var cancelCount = 0
-    private(set) var handler: (() -> Void)?
-
-    func schedule(every interval: TimeInterval, handler: @escaping () -> Void) {
-        scheduledIntervals.append(interval)
-        self.handler = handler
-    }
-
-    func cancel() {
-        cancelCount += 1
-        handler = nil
-    }
-
-    func fire() {
-        handler?()
     }
 }

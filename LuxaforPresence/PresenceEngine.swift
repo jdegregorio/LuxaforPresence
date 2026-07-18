@@ -19,6 +19,10 @@ final class PresenceEngine {
         static let minimumLocalOutputReassertSeconds: TimeInterval = 5
         static let defaultOutputBrightness = 0.7
         static let defaultLocalOutputHeartbeatEnabled = false
+        static let defaultAvailableColor = LuxaforColor.off
+        static let defaultZoomQuietColor = LuxaforColor.yellow
+        static let defaultRecentVoiceColor = LuxaforColor.red
+        static let defaultVoiceCooldownColor = LuxaforColor.orange
 
         var transportMode: TransportMode = .local
         var localWebhookBaseUrl = LocalWebhookEndpoint.defaultBaseURLString
@@ -34,6 +38,10 @@ final class PresenceEngine {
         var localOutputReassertSeconds = defaultLocalOutputReassertSeconds
         var outputBrightness = defaultOutputBrightness
         var localOutputHeartbeatEnabled = defaultLocalOutputHeartbeatEnabled
+        var availableColor = defaultAvailableColor
+        var zoomQuietColor = defaultZoomQuietColor
+        var recentVoiceColor = defaultRecentVoiceColor
+        var voiceCooldownColor = defaultVoiceCooldownColor
         private let logger = Logger(subsystem: "com.jdegregorio.LuxaforPresence", category: "Config")
 
         init(
@@ -130,7 +138,7 @@ final class PresenceEngine {
                     logger.error("Invalid vadMinimumActiveMilliseconds; expected a finite value of at least \(Self.minimumVadMinimumActiveMilliseconds, privacy: .public) milliseconds. Using \(Self.defaultVadMinimumActiveMilliseconds, privacy: .public) milliseconds.")
                 }
             }
-            if let value = values["recentVoiceSeconds"] ?? values["recentVoiceBlinkSeconds"] {
+            if let value = values["recentVoiceSeconds"] {
                 if let duration = Self.nonNegativeFiniteDuration(from: value) {
                     recentVoiceSeconds = duration
                 } else {
@@ -165,6 +173,45 @@ final class PresenceEngine {
             if let heartbeatEnabled = values["localOutputHeartbeatEnabled"] as? Bool {
                 localOutputHeartbeatEnabled = heartbeatEnabled
             }
+            applyColor(
+                from: values,
+                key: "availableColor",
+                to: \Self.availableColor,
+                defaultValue: Self.defaultAvailableColor
+            )
+            applyColor(
+                from: values,
+                key: "zoomQuietColor",
+                to: \Self.zoomQuietColor,
+                defaultValue: Self.defaultZoomQuietColor
+            )
+            applyColor(
+                from: values,
+                key: "recentVoiceColor",
+                to: \Self.recentVoiceColor,
+                defaultValue: Self.defaultRecentVoiceColor
+            )
+            applyColor(
+                from: values,
+                key: "voiceCooldownColor",
+                to: \Self.voiceCooldownColor,
+                defaultValue: Self.defaultVoiceCooldownColor
+            )
+        }
+
+        private mutating func applyColor(
+            from values: [String: Any],
+            key: String,
+            to keyPath: WritableKeyPath<Self, LuxaforColor>,
+            defaultValue: LuxaforColor
+        ) {
+            guard let value = values[key] else { return }
+            guard let hexString = value as? String,
+                  let color = LuxaforColor(hexString: hexString) else {
+                logger.error("Invalid \(key, privacy: .public); expected a six-digit RGB hex color. Using \(defaultValue.localHex, privacy: .public).")
+                return
+            }
+            self[keyPath: keyPath] = color
         }
 
         private mutating func validateSelectedTransport() {
@@ -176,7 +223,7 @@ final class PresenceEngine {
             transportMode = .local
         }
 
-        private static func isValidRemoteWebhookUserId(_ value: String) -> Bool {
+        static func isValidRemoteWebhookUserId(_ value: String) -> Bool {
             let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             guard !normalized.isEmpty else { return false }
             return normalized != "YOUR_USER_ID_HERE"
@@ -211,11 +258,55 @@ final class PresenceEngine {
             let finalizedLocalOutputReassertSeconds = localOutputReassertSeconds
             let finalizedOutputBrightness = outputBrightness
             let finalizedLocalOutputHeartbeatEnabled = localOutputHeartbeatEnabled
-            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, detectZoom \(finalizedDetectZoom, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), vadMinimumActiveMilliseconds \(finalizedVadMinimumActiveMilliseconds, privacy: .public), recentVoiceSeconds \(finalizedRecentVoiceSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public), localOutputHeartbeatEnabled \(finalizedLocalOutputHeartbeatEnabled, privacy: .public), localOutputReassertSeconds \(finalizedLocalOutputReassertSeconds, privacy: .public), outputBrightness \(finalizedOutputBrightness, privacy: .public)")
+            let finalizedAvailableColor = availableColor
+            let finalizedZoomQuietColor = zoomQuietColor
+            let finalizedRecentVoiceColor = recentVoiceColor
+            let finalizedVoiceCooldownColor = voiceCooldownColor
+            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, detectZoom \(finalizedDetectZoom, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), vadMinimumActiveMilliseconds \(finalizedVadMinimumActiveMilliseconds, privacy: .public), recentVoiceSeconds \(finalizedRecentVoiceSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public), localOutputHeartbeatEnabled \(finalizedLocalOutputHeartbeatEnabled, privacy: .public), localOutputReassertSeconds \(finalizedLocalOutputReassertSeconds, privacy: .public), outputBrightness \(finalizedOutputBrightness, privacy: .public), availableColor \(finalizedAvailableColor.localHex, privacy: .public), zoomQuietColor \(finalizedZoomQuietColor.localHex, privacy: .public), recentVoiceColor \(finalizedRecentVoiceColor.localHex, privacy: .public), voiceCooldownColor \(finalizedVoiceCooldownColor.localHex, privacy: .public)")
         }
 
         var vadMinimumActiveDuration: TimeInterval {
             vadMinimumActiveMilliseconds / 1_000
+        }
+
+        var propertyListValues: [String: Any] {
+            [
+                "transportMode": transportMode.rawValue,
+                "localWebhookBaseUrl": localWebhookBaseUrl,
+                "localWebhookToken": localWebhookToken,
+                "remoteWebhookUserId": remoteWebhookUserId,
+                "pollInterval": pollInterval,
+                "detectZoom": detectZoom,
+                "vadEnabled": vadEnabled,
+                "vadThreshold": vadThreshold,
+                "vadMinimumActiveMilliseconds": vadMinimumActiveMilliseconds,
+                "recentVoiceSeconds": recentVoiceSeconds,
+                "voiceCooldownSeconds": voiceCooldownSeconds,
+                "localOutputHeartbeatEnabled": localOutputHeartbeatEnabled,
+                "localOutputReassertSeconds": localOutputReassertSeconds,
+                "outputBrightness": outputBrightness,
+                "availableColor": availableColor.localHex,
+                "zoomQuietColor": zoomQuietColor.localHex,
+                "recentVoiceColor": recentVoiceColor.localHex,
+                "voiceCooldownColor": voiceCooldownColor.localHex,
+            ]
+        }
+
+        func lightOutput(for state: PresenceState) -> LightOutput {
+            let color: LuxaforColor
+            switch state {
+            case .available:
+                color = availableColor
+            case .zoomQuiet:
+                color = zoomQuietColor
+            case .voiceRecent:
+                color = recentVoiceColor
+            case .voiceCooldown:
+                color = voiceCooldownColor
+            case .unknown:
+                return .off
+            }
+            return color == .off ? .off : .solid(color)
         }
 
         func makeLuxaforClient() -> LuxaforClientProtocol {
@@ -311,7 +402,6 @@ final class PresenceEngine {
         meetingDetector: MeetingDetectorProtocol? = nil,
         voiceActivity: VoiceActivitySignalProtocol? = nil,
         luxafor: LuxaforClientProtocol? = nil,
-        outputTimer: LightOutputTimerProtocol? = nil,
         localServiceRecoveryMonitor: LocalServiceRecoveryMonitoring? = nil,
         localOutputHeartbeat: LocalOutputHeartbeating? = nil,
         now: @escaping () -> Date = Date.init
@@ -331,8 +421,7 @@ final class PresenceEngine {
         )
         self.outputController = LightOutputController(
             client: luxafor ?? config.makeLuxaforClient(),
-            userId: config.remoteWebhookUserId,
-            timer: outputTimer ?? LightOutputTimer()
+            userId: config.remoteWebhookUserId
         )
         self.localServiceRecoveryMonitor = localServiceRecoveryMonitor
             ?? config.makeLocalServiceRecoveryMonitor()
@@ -391,7 +480,7 @@ final class PresenceEngine {
         requestAutomaticReevaluation()
     }
 
-    func resetVoiceTimer() {
+    func clearSignalTimeline() {
         stateLock.lock()
         voiceTimelineGeneration &+= 1
         stateLock.unlock()
@@ -407,8 +496,8 @@ final class PresenceEngine {
         }
     }
 
-    /// Pauses software animation while the Mac is asleep, retaining the desired
-    /// logical output for the wake reevaluation.
+    /// Pauses output while the Mac is asleep, retaining the desired logical
+    /// output for the wake reevaluation.
     func suspendOutput() {
         outputLifecycleLock.lock()
         outputLifecycleGeneration &+= 1
@@ -732,7 +821,7 @@ final class PresenceEngine {
         decisionPath: String
     ) {
         let previousState = lastState
-        let output = state.lightOutput
+        let output = config.lightOutput(for: state)
         let zoomActive = snapshot.map { String($0.zoomActive) } ?? "unknown"
         let microphoneActive = snapshot.map { String($0.microphoneActive) } ?? "unknown"
         let voiceCurrentlyAboveThreshold = snapshot.map {
