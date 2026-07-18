@@ -4,19 +4,19 @@ import XCTest
 final class ApplicationVersionTests: XCTestCase {
     func test_versionAndBuild_rendersSemanticVersionOnly() {
         let title = ApplicationVersion.menuTitle(infoDictionary: [
-            "CFBundleShortVersionString": "1.9.1",
-            "CFBundleVersion": "1.9.1",
+            "CFBundleShortVersionString": "1.9.2",
+            "CFBundleVersion": "1.9.2",
         ])
 
-        XCTAssertEqual(title, "Version: 1.9.1")
+        XCTAssertEqual(title, "Version: 1.9.2")
     }
 
     func test_missingBuild_rendersShortVersionOnly() {
         let title = ApplicationVersion.menuTitle(infoDictionary: [
-            "CFBundleShortVersionString": "1.9.1",
+            "CFBundleShortVersionString": "1.9.2",
         ])
 
-        XCTAssertEqual(title, "Version: 1.9.1")
+        XCTAssertEqual(title, "Version: 1.9.2")
     }
 
     func test_missingVersionMetadata_rendersSafeFallback() {

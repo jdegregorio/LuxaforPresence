@@ -4,9 +4,13 @@ All notable changes to LuxaforPresence will be documented here.
 
 ## Unreleased
 
+- Normalize equivalent local webhook URLs before comparing output destinations, preventing cosmetic edits from taking the shutdown path.
+- Package the destination comparison fix as version `1.9.2`.
+
+## [1.9.1] – 2026-07-18
+
 - Turn off the previously configured output only when its destination changes, avoiding both a stuck old Luxafor and a stale Off race on ordinary saves.
 - Preserve an older custom Recent Signal duration while normalizing saved settings to the current schema.
-- Package the settings review fixes as version `1.9.1`.
 
 ## [1.9.0] – 2026-07-18
 
