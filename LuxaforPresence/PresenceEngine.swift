@@ -138,7 +138,7 @@ final class PresenceEngine {
                     logger.error("Invalid vadMinimumActiveMilliseconds; expected a finite value of at least \(Self.minimumVadMinimumActiveMilliseconds, privacy: .public) milliseconds. Using \(Self.defaultVadMinimumActiveMilliseconds, privacy: .public) milliseconds.")
                 }
             }
-            if let value = values["recentVoiceSeconds"] {
+            if let value = values["recentVoiceSeconds"] ?? values["recentVoiceBlinkSeconds"] {
                 if let duration = Self.nonNegativeFiniteDuration(from: value) {
                     recentVoiceSeconds = duration
                 } else {
@@ -307,6 +307,16 @@ final class PresenceEngine {
                 return .off
             }
             return color == .off ? .off : .solid(color)
+        }
+
+        func targetsSameOutput(as other: Self) -> Bool {
+            guard transportMode == other.transportMode else { return false }
+            switch transportMode {
+            case .local:
+                return localWebhookBaseUrl == other.localWebhookBaseUrl
+            case .remote:
+                return remoteWebhookUserId == other.remoteWebhookUserId
+            }
         }
 
         func makeLuxaforClient() -> LuxaforClientProtocol {

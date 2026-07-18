@@ -383,7 +383,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         timer?.invalidate()
         timer = nil
         let retainedManualState = manualState
-        engine.suspendOutput()
+        if engine.config.targetsSameOutput(as: config) {
+            // Avoid racing a stale off command against the replacement color.
+            engine.suspendOutput()
+        } else {
+            // Future commands target another light, so clear the old one first.
+            engine.shutdownOutput()
+        }
 
         currentState = .unknown
         currentOutput = nil

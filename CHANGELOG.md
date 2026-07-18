@@ -4,13 +4,18 @@ All notable changes to LuxaforPresence will be documented here.
 
 ## Unreleased
 
+- Turn off the previously configured output only when its destination changes, avoiding both a stuck old Luxafor and a stale Off race on ordinary saves.
+- Preserve an older custom Recent Signal duration while normalizing saved settings to the current schema.
+- Package the settings review fixes as version `1.9.1`.
+
+## [1.9.0] – 2026-07-18
+
 - Add an in-app Settings window for behavior, presence colors, connection, and advanced signal/output controls.
 - Make Available, Zoom Quiet, Recent Signal, and Cooldown colors independently configurable.
 - Expose both Recent Signal and Cooldown durations with an explanation of the transition timeline and one-click defaults restoration.
 - Replace the ambiguous timer reset menu item with **Clear Recent Signal & Cooldown**.
-- Remove the obsolete animated-output implementation, timer, configuration aliases, tests, and requirements document.
+- Remove the obsolete animated-output implementation, timer, tests, and requirements document; normalized configurations no longer retain animation-era keys.
 - Normalize saved settings to the supported schema and apply them immediately without restarting.
-- Package this backward-compatible feature set as version `1.9.0`.
 
 ## [1.8.1] – 2026-07-17
 
