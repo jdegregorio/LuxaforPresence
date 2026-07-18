@@ -6,6 +6,8 @@ All notable changes to LuxaforPresence will be documented here.
 
 - Normalize equivalent local webhook URLs before comparing output destinations, preventing cosmetic edits from taking the shutdown path.
 - Package the destination comparison fix as version `1.9.2`.
+- Ignore CoreSpeech's persistent background voice-trigger input when deciding whether a user application is using the microphone, preventing LuxaforPresence from keeping its own sampler active after dictation ends.
+- Package the CoreSpeech input filtering fix as version `1.9.3`.
 
 ## [1.9.1] – 2026-07-18
 

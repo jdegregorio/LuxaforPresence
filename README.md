@@ -282,11 +282,11 @@ Manual choices take precedence over automatic detection and stop signal sampling
 
 **Clear Recent Signal & Cooldown** forgets the last detected input signal. When Automatic is selected, the app reevaluates immediately; a manual override remains selected. It is useful after a false positive or when the light should leave Recent/Cooldown before their configured durations expire.
 
-The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.2**.
+The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.3**.
 
 ## Privacy and permissions
 
-The packaged app requests only **Microphone** permission. Permission alone does not keep an audio stream open: `AVAudioEngine` starts only while Core Audio reports active input in another process, and it stops when that external use ends, a manual override is selected, the Mac sleeps, or the app quits. The app excludes its own audio process so sampling cannot keep itself active.
+The packaged app requests only **Microphone** permission. Permission alone does not keep an audio stream open: `AVAudioEngine` starts only while Core Audio reports active input in another process, and it stops when that external use ends, a manual override is selected, the Mac sleeps, or the app quits. The app excludes its own audio process and Apple's background CoreSpeech voice trigger, which can remain active when no user-facing dictation client is listening, so neither can keep sampling active by itself.
 
 While active, LuxaforPresence calculates RMS energy from short in-memory buffers. It never records, stores, transmits, or transcribes audio, and it never logs individual audio samples. Zoom detection is process-based (`CptHost`) and does not require Accessibility, Calendar, Camera, browser automation, or Apple Events permissions.
 
