@@ -222,14 +222,14 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(config.lightOutput(for: .unknown), .off)
     }
 
-    func test_targetsSameOutput_ignoresSettingsThatDoNotChangeDestination() {
+    func test_targetsSameOutput_ignoresEquivalentURLAndNonDestinationSettings() {
         let original = PresenceEngine.Config(values: [
             "localWebhookBaseUrl": "http://127.0.0.1:5383",
             "localWebhookToken": "old-token",
             "recentVoiceColor": "#123456",
         ])
         let updated = PresenceEngine.Config(values: [
-            "localWebhookBaseUrl": "http://127.0.0.1:5383",
+            "localWebhookBaseUrl": "http://127.0.0.1:5383/",
             "localWebhookToken": "new-token",
             "recentVoiceColor": "#654321",
         ])

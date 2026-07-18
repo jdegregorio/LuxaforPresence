@@ -313,7 +313,15 @@ final class PresenceEngine {
             guard transportMode == other.transportMode else { return false }
             switch transportMode {
             case .local:
-                return localWebhookBaseUrl == other.localWebhookBaseUrl
+                guard let currentEndpoint = try? LocalWebhookEndpoint(
+                    validating: localWebhookBaseUrl
+                ),
+                let otherEndpoint = try? LocalWebhookEndpoint(
+                    validating: other.localWebhookBaseUrl
+                ) else {
+                    return false
+                }
+                return currentEndpoint.colorURL == otherEndpoint.colorURL
             case .remote:
                 return remoteWebhookUserId == other.remoteWebhookUserId
             }

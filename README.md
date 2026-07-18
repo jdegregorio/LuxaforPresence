@@ -86,7 +86,7 @@ If the Luxafor app uses a different port or token, update the Local webhook fiel
 
 ## 2. Install LuxaforPresence
 
-1. Double-click `LuxaforPresence-1.9.1.dmg`.
+1. Double-click `LuxaforPresence-1.9.2.dmg`.
 2. Drag **LuxaforPresence.app** onto the **Applications** shortcut in the DMG.
 3. Eject the DMG.
 4. Open `/Applications` in Finder and launch **LuxaforPresence** from there.
@@ -282,7 +282,7 @@ Manual choices take precedence over automatic detection and stop signal sampling
 
 **Clear Recent Signal & Cooldown** forgets the last detected input signal. When Automatic is selected, the app reevaluates immediately; a manual override remains selected. It is useful after a false positive or when the light should leave Recent/Cooldown before their configured durations expire.
 
-The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.1**.
+The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.2**.
 
 ## Privacy and permissions
 
@@ -386,7 +386,7 @@ CLANG_MODULE_CACHE_PATH=$PWD/.cache swift build --disable-sandbox
 Create a release app and local DMG:
 
 ```bash
-./scripts/package-dmg.sh -c release -n LuxaforPresence-1.9.1
+./scripts/package-dmg.sh -c release -n LuxaforPresence-1.9.2
 ```
 
 Outputs are written under `dist/`. The packaging script creates an ad-hoc-signed development artifact with the microphone entitlement. For trusted distribution, follow [DIST.md](DIST.md) to Developer ID-sign, notarize, staple, and verify the app and DMG.
