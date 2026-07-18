@@ -222,6 +222,42 @@ final class ConfigValidationTests: XCTestCase {
         XCTAssertEqual(config.lightOutput(for: .unknown), .off)
     }
 
+    func test_targetsSameOutput_ignoresSettingsThatDoNotChangeDestination() {
+        let original = PresenceEngine.Config(values: [
+            "localWebhookBaseUrl": "http://127.0.0.1:5383",
+            "localWebhookToken": "old-token",
+            "recentVoiceColor": "#123456",
+        ])
+        let updated = PresenceEngine.Config(values: [
+            "localWebhookBaseUrl": "http://127.0.0.1:5383",
+            "localWebhookToken": "new-token",
+            "recentVoiceColor": "#654321",
+        ])
+
+        XCTAssertTrue(original.targetsSameOutput(as: updated))
+    }
+
+    func test_targetsSameOutput_detectsLocalRemoteAndUserChanges() {
+        let local = PresenceEngine.Config(values: [
+            "localWebhookBaseUrl": "http://127.0.0.1:5383",
+        ])
+        let otherLocal = PresenceEngine.Config(values: [
+            "localWebhookBaseUrl": "http://127.0.0.1:6000",
+        ])
+        let remote = PresenceEngine.Config(values: [
+            "transportMode": "remote",
+            "remoteWebhookUserId": "user-one",
+        ])
+        let otherRemote = PresenceEngine.Config(values: [
+            "transportMode": "remote",
+            "remoteWebhookUserId": "user-two",
+        ])
+
+        XCTAssertFalse(local.targetsSameOutput(as: otherLocal))
+        XCTAssertFalse(local.targetsSameOutput(as: remote))
+        XCTAssertFalse(remote.targetsSameOutput(as: otherRemote))
+    }
+
     func test_init_acceptsZoomDetectionFlag() {
         let config = PresenceEngine.Config(values: [
             "detectZoom": false,

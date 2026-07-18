@@ -4,7 +4,7 @@ All notable changes to LuxaforPresence will be documented here.
 
 ## Unreleased
 
-- Turn off the previously configured output destination before applying connection changes so an old Luxafor cannot remain stuck on.
+- Turn off the previously configured output only when its destination changes, avoiding both a stuck old Luxafor and a stale Off race on ordinary saves.
 - Preserve an older custom Recent Signal duration while normalizing saved settings to the current schema.
 - Package the settings review fixes as version `1.9.1`.
 

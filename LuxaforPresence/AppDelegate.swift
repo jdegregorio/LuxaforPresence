@@ -383,9 +383,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         timer?.invalidate()
         timer = nil
         let retainedManualState = manualState
-        // Turn off the old destination before a saved URL, token, transport,
-        // or user ID can redirect all future commands to a different light.
-        engine.shutdownOutput()
+        if engine.config.targetsSameOutput(as: config) {
+            // Avoid racing a stale off command against the replacement color.
+            engine.suspendOutput()
+        } else {
+            // Future commands target another light, so clear the old one first.
+            engine.shutdownOutput()
+        }
 
         currentState = .unknown
         currentOutput = nil

@@ -309,6 +309,16 @@ final class PresenceEngine {
             return color == .off ? .off : .solid(color)
         }
 
+        func targetsSameOutput(as other: Self) -> Bool {
+            guard transportMode == other.transportMode else { return false }
+            switch transportMode {
+            case .local:
+                return localWebhookBaseUrl == other.localWebhookBaseUrl
+            case .remote:
+                return remoteWebhookUserId == other.remoteWebhookUserId
+            }
+        }
+
         func makeLuxaforClient() -> LuxaforClientProtocol {
             switch transportMode {
             case .local:
