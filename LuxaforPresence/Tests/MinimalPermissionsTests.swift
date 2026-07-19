@@ -55,6 +55,7 @@ final class MinimalPermissionsTests: XCTestCase {
 
         XCTAssertEqual(values["detectZoom"] as? Bool, true)
         XCTAssertEqual(values["outputBrightness"] as? Double, 0.7)
+        XCTAssertEqual(values["zoomVadThreshold"] as? Double, 0.02)
         XCTAssertEqual(values["localOutputHeartbeatEnabled"] as? Bool, false)
         XCTAssertEqual(values["availableColor"] as? String, "#000000")
         XCTAssertEqual(values["zoomQuietColor"] as? String, "#FFFF00")

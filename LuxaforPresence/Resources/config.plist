@@ -18,6 +18,8 @@
     <true/>
     <key>vadThreshold</key>
     <real>0.001</real>
+    <key>zoomVadThreshold</key>
+    <real>0.02</real>
     <key>vadMinimumActiveMilliseconds</key>
     <integer>250</integer>
     <key>recentVoiceSeconds</key>

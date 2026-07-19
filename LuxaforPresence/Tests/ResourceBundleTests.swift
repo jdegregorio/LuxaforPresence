@@ -77,6 +77,7 @@ final class ResourceBundleTests: XCTestCase {
 
         XCTAssertTrue(config.detectZoom)
         XCTAssertEqual(config.vadThreshold, 0.001)
+        XCTAssertEqual(config.zoomVadThreshold, 0.02)
         XCTAssertEqual(config.vadMinimumActiveMilliseconds, 250)
         XCTAssertEqual(config.recentVoiceSeconds, 300)
         XCTAssertEqual(config.voiceCooldownSeconds, 300)

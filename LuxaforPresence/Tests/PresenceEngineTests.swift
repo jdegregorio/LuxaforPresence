@@ -294,7 +294,7 @@ final class PresenceEngineTests: XCTestCase {
         )
     }
 
-    func test_zoomMicrophone_usesThreeSecondSignalQualification() {
+    func test_zoomMicrophone_usesSpeechThresholdAndConfiguredQualification() {
         let harness = PresenceEngineHarness()
         harness.meetingDetector.isActive = true
         harness.micCam.microphoneActive = true
@@ -304,7 +304,11 @@ final class PresenceEngineTests: XCTestCase {
 
         XCTAssertEqual(
             harness.voiceActivity.captureMinimumActiveDurations,
-            [PresenceEngine.minimumZoomSignalDuration]
+            [harness.config.vadMinimumActiveDuration]
+        )
+        XCTAssertEqual(
+            harness.voiceActivity.captureThresholds,
+            [harness.config.zoomVadThreshold]
         )
         XCTAssertEqual(harness.states, [.zoomQuiet])
     }
@@ -325,7 +329,11 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.outputs, [.solid(.yellow)])
         XCTAssertEqual(
             harness.voiceActivity.captureMinimumActiveDurations,
-            [PresenceEngine.minimumZoomSignalDuration]
+            [harness.config.vadMinimumActiveDuration]
+        )
+        XCTAssertEqual(
+            harness.voiceActivity.captureThresholds,
+            [harness.config.zoomVadThreshold]
         )
         XCTAssertEqual(harness.snapshots.last?.decisionPath, .zoomQuiet)
     }
@@ -376,6 +384,10 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(
             harness.voiceActivity.captureMinimumActiveDurations,
             [harness.config.vadMinimumActiveDuration]
+        )
+        XCTAssertEqual(
+            harness.voiceActivity.captureThresholds,
+            [harness.config.vadThreshold]
         )
     }
 
@@ -1221,6 +1233,7 @@ private final class FakeVoiceActivitySignal: VoiceActivitySignalProtocol {
     private(set) var captureContextRequests: [Bool] = []
     private(set) var captureContextChanges: [Bool] = []
     private(set) var captureMinimumActiveDurations: [TimeInterval] = []
+    private(set) var captureThresholds: [Double] = []
     private(set) var suspendCount = 0
     private(set) var resumeCount = 0
     private(set) var resetCount = 0
@@ -1237,8 +1250,21 @@ private final class FakeVoiceActivitySignal: VoiceActivitySignalProtocol {
         _ active: Bool,
         minimumActiveDuration: TimeInterval
     ) {
+        setCaptureContextActive(
+            active,
+            minimumActiveDuration: minimumActiveDuration,
+            threshold: PresenceEngine.Config.defaultVadThreshold
+        )
+    }
+
+    func setCaptureContextActive(
+        _ active: Bool,
+        minimumActiveDuration: TimeInterval,
+        threshold: Double
+    ) {
         captureContextRequests.append(active)
         captureMinimumActiveDurations.append(minimumActiveDuration)
+        captureThresholds.append(threshold)
         guard captureContextActive != active else { return }
         captureContextActive = active
         captureContextChanges.append(active)

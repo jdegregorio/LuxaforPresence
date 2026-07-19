@@ -14,6 +14,7 @@ final class PresenceSettingsTests: XCTestCase {
         draft.detectZoom = false
         draft.vadEnabled = false
         draft.vadThreshold = 0.02
+        draft.zoomVadThreshold = 0.04
         draft.vadMinimumActiveMilliseconds = 400
         draft.recentVoiceSeconds = 90
         draft.voiceCooldownSeconds = 120
@@ -35,6 +36,7 @@ final class PresenceSettingsTests: XCTestCase {
         XCTAssertFalse(config.detectZoom)
         XCTAssertFalse(config.vadEnabled)
         XCTAssertEqual(config.vadThreshold, 0.02)
+        XCTAssertEqual(config.zoomVadThreshold, 0.04)
         XCTAssertEqual(config.vadMinimumActiveMilliseconds, 400)
         XCTAssertEqual(config.recentVoiceSeconds, 90)
         XCTAssertEqual(config.voiceCooldownSeconds, 120)
@@ -52,6 +54,7 @@ final class PresenceSettingsTests: XCTestCase {
 
         XCTAssertEqual(draft.recentVoiceSeconds, 300)
         XCTAssertEqual(draft.voiceCooldownSeconds, 300)
+        XCTAssertEqual(draft.zoomVadThreshold, 0.02)
         XCTAssertEqual(draft.availableColor, .off)
         XCTAssertEqual(draft.zoomQuietColor, .yellow)
         XCTAssertEqual(draft.recentVoiceColor, .red)

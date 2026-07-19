@@ -150,6 +150,8 @@ The saved file is readable only by the current user. The complete default config
     <true/>
     <key>vadThreshold</key>
     <real>0.001</real>
+    <key>zoomVadThreshold</key>
+    <real>0.02</real>
     <key>vadMinimumActiveMilliseconds</key>
     <integer>250</integer>
     <key>recentVoiceSeconds</key>
@@ -185,8 +187,9 @@ The saved file is readable only by the current user. The complete default config
 | `pollInterval` | `2` seconds | How often Zoom and other processes' active microphone input are checked. Minimum `0.25`. |
 | `detectZoom` | `true` | Enables Zoom detection from Zoom-owned microphone input, in-call power assertions, and legacy helper processes. |
 | `vadEnabled` | `true` | Enables local input-energy analysis while any other process has active microphone input. |
-| `vadThreshold` | `0.001` | RMS threshold separating digital silence from a real input signal. Valid range is greater than `0` through `1`. Raise it if room noise qualifies too easily. |
-| `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required for microphone-only tools. Minimum `250`; Zoom uses at least three seconds to reject call-start noise. |
+| `vadThreshold` | `0.001` | RMS threshold separating digital silence from a real input signal outside Zoom. Valid range is greater than `0` through `1`. |
+| `zoomVadThreshold` | `0.02` | Speech-level RMS threshold used during Zoom calls. This keeps a steady microphone noise floor in Zoom Quiet while allowing talking to drive Recent Signal. Existing configurations that omit this key use the default. |
+| `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required before a signal qualifies. Minimum `250`; it applies to both Zoom and other microphone contexts. |
 | `recentVoiceSeconds` | `300` | Seconds spent in Recent Signal after the last qualifying input. A new signal restarts this duration. |
 | `voiceCooldownSeconds` | `300` | Seconds spent in Cooldown after Recent Signal ends. Afterward the state becomes Zoom Quiet or Available. |
 | `availableColor` | `#000000` | Output used when no communication context is active. Black turns the device off. |
@@ -254,7 +257,7 @@ Use the actual port and token if you changed them. Treat a custom token like a p
 1. Leave Zoom closed and confirm **Signal Sampling: Idle**.
 2. Start any app that actively receives microphone input, such as Zoom, Teams, Slack, FaceTime, a browser call, dictation, or recording software.
 3. Within one polling interval, expect **Other App Input: In Use** and **Signal Sampling: Active**. The macOS microphone privacy indicator is expected while sampling is active.
-4. For dictation or recording without Zoom, produce a non-silent input signal for at least 250 milliseconds. Expect **Input Signal: Detected** and solid red. In Zoom, continuous input must remain above the threshold for at least three seconds; the light stays yellow before then.
+4. For dictation or recording without Zoom, produce a non-silent input signal for at least 250 milliseconds. In Zoom, talk at normal volume for the same configured minimum. Expect **Input Signal: Detected** and solid red; steady quiet input below the separate Zoom threshold remains yellow.
 5. Stop the microphone-using app. Expect **Signal Sampling: Idle** while the light remains red for the configured Recent Signal duration, then orange for Cooldown. The timeline continues without keeping LuxaforPresence's microphone open.
 6. After Cooldown expires, expect yellow if Zoom is still active or off otherwise. macOS may briefly retain its privacy indicator after capture stops.
 
@@ -282,7 +285,7 @@ Manual choices take precedence over automatic detection and stop signal sampling
 
 **Clear Recent Signal & Cooldown** forgets the last detected input signal. When Automatic is selected, the app reevaluates immediately; a manual override remains selected. It is useful after a false positive or when the light should leave Recent/Cooldown before their configured durations expire.
 
-The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.5**.
+The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.6**.
 
 ## Privacy and permissions
 
@@ -332,7 +335,7 @@ If the menu says **Microphone Permission: Denied — Open Privacy Settings**, op
 - Confirm the microphone-using app is actively receiving input, not merely open.
 - Return LuxaforPresence to **Automatic**; manual overrides intentionally stop sampling.
 - Stream diagnostics and look for `External input activity changed active=true source=coreAudioProcesses`.
-- If sampling is active but **Input Signal** remains quiet, lower `vadThreshold`; `0.001` is the bundled digital-silence-oriented default. Zoom also requires three continuous seconds above the threshold, while microphone-only tools use the configured minimum.
+- If sampling is active but **Input Signal** remains quiet, lower the threshold for that context. `vadThreshold` defaults to `0.001` outside Zoom; `zoomVadThreshold` defaults to the speech-oriented `0.02` during Zoom calls.
 
 ### Zoom is active but the light stays off
 

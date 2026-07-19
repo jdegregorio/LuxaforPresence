@@ -12,7 +12,7 @@ struct VoiceActivityDebouncer {
         let qualifyingActivityDate: Date?
     }
 
-    private let threshold: Double
+    private var threshold: Double
     private var minimumActiveDuration: TimeInterval
     private let refreshInterval: TimeInterval
     private let baseEvidenceWindowDuration: TimeInterval
@@ -107,6 +107,14 @@ struct VoiceActivityDebouncer {
             baseEvidenceWindowDuration
         )
         reset()
+    }
+
+    mutating func reset(
+        threshold: Double,
+        minimumActiveDuration: TimeInterval
+    ) {
+        self.threshold = threshold
+        reset(minimumActiveDuration: minimumActiveDuration)
     }
 
     private mutating func resetBurst() {
