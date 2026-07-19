@@ -13,9 +13,10 @@ struct VoiceActivityDebouncer {
     }
 
     private let threshold: Double
-    private let minimumActiveDuration: TimeInterval
+    private var minimumActiveDuration: TimeInterval
     private let refreshInterval: TimeInterval
-    private let evidenceWindowDuration: TimeInterval
+    private let baseEvidenceWindowDuration: TimeInterval
+    private var evidenceWindowDuration: TimeInterval
     private var accumulatedActiveDuration: TimeInterval = 0
     private var burstHasQualified = false
     private var evidenceWindowStartDate: Date?
@@ -29,9 +30,14 @@ struct VoiceActivityDebouncer {
         evidenceWindowDuration: TimeInterval = 1
     ) {
         self.threshold = threshold
-        self.minimumActiveDuration = max(0.25, minimumActiveDuration)
+        let normalizedMinimumActiveDuration = max(0.25, minimumActiveDuration)
+        self.minimumActiveDuration = normalizedMinimumActiveDuration
         self.refreshInterval = max(0, refreshInterval)
-        self.evidenceWindowDuration = max(1, evidenceWindowDuration)
+        self.baseEvidenceWindowDuration = max(1, evidenceWindowDuration)
+        self.evidenceWindowDuration = max(
+            normalizedMinimumActiveDuration + self.baseEvidenceWindowDuration / 2,
+            self.baseEvidenceWindowDuration
+        )
     }
 
     mutating func process(
@@ -92,6 +98,15 @@ struct VoiceActivityDebouncer {
     mutating func reset() {
         resetBurst()
         wasAboveThreshold = false
+    }
+
+    mutating func reset(minimumActiveDuration: TimeInterval) {
+        self.minimumActiveDuration = max(0.25, minimumActiveDuration)
+        evidenceWindowDuration = max(
+            self.minimumActiveDuration + baseEvidenceWindowDuration / 2,
+            baseEvidenceWindowDuration
+        )
+        reset()
     }
 
     private mutating func resetBurst() {

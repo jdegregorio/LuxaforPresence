@@ -7,7 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var engine = PresenceEngine()
     private let configurationFileManager = ConfigurationFileManager()
     private let launchAtLogin: LaunchAtLoginControlling = LaunchAtLoginController()
+    private let engineRetirementCoordinator = EngineRetirementCoordinator()
     private var settingsWindowController: SettingsWindowController?
+    private var engineGeneration: UInt64 = 0
     private let logger = Logger(
         subsystem: "com.jdegregorio.LuxaforPresence",
         category: "AppDelegate"
@@ -60,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
         timer = nil
+        engineGeneration &+= 1
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         engine.shutdownOutput()
     }
@@ -172,6 +175,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.localWebhookReachable = reachable
             self?.refreshDiagnostics()
         }
+    }
+
+    private func detachEngineCallbacks(_ engine: PresenceEngine) {
+        engine.onStateChange = nil
+        engine.onSnapshot = nil
+        engine.onOutputChange = nil
+        engine.onLocalWebhookReachabilityChange = nil
     }
 
     private func menuTitle(for state: PresenceState) -> String {
@@ -383,13 +393,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         timer?.invalidate()
         timer = nil
         let retainedManualState = manualState
-        if engine.config.targetsSameOutput(as: config) {
-            // Avoid racing a stale off command against the replacement color.
-            engine.suspendOutput()
-        } else {
-            // Future commands target another light, so clear the old one first.
-            engine.shutdownOutput()
-        }
+        let retiredEngine = engine
+        retiredEngine.beginOutputRetirement()
+        detachEngineCallbacks(retiredEngine)
+        let retirementAction: EngineRetirementAction = retiredEngine.config
+            .targetsSameOutput(as: config)
+            ? .suspend
+            : .shutdown
+        engineGeneration &+= 1
+        let replacementGeneration = engineGeneration
 
         currentState = .unknown
         currentOutput = nil
@@ -401,14 +413,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatusIcon(.unknown)
         buildMenu()
         updateLaunchAtLoginItem()
-        engine.prepare()
-        if let retainedManualState {
-            engine.force(retainedManualState)
-        } else {
-            engine.tick()
+        logger.log("Queued old engine retirement after saving settings")
+
+        engineRetirementCoordinator.retire(
+            retiredEngine,
+            action: retirementAction
+        ) { [weak self, weak replacementEngine = engine] in
+            guard let self,
+                  let replacementEngine,
+                  self.engineGeneration == replacementGeneration else {
+                return
+            }
+            replacementEngine.prepare()
+            if let retainedManualState {
+                replacementEngine.force(retainedManualState)
+            } else {
+                replacementEngine.tick()
+            }
+            self.schedulePollingTimer()
+            self.logger.log("Applied saved settings and requested immediate signal reevaluation")
         }
-        schedulePollingTimer()
-        logger.log("Applied saved settings and requested immediate signal reevaluation")
     }
 
     @objc private func workspaceWillSleep(_ notification: Notification) {

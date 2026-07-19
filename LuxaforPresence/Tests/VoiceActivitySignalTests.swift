@@ -333,6 +333,57 @@ final class VoiceActivitySignalTests: XCTestCase {
         XCTAssertNil(signal.lastVoiceActivityDate)
     }
 
+    func test_zoomQualification_requiresThreeSecondsOfContinuousSignal() throws {
+        let engine = FakeVoiceActivityAudioEngine()
+        var currentDate = Date(timeIntervalSinceReferenceDate: 1_500)
+        let signal = VoiceActivitySignal(
+            threshold: 0.02,
+            minimumActiveDuration: 0.25,
+            engine: engine,
+            microphoneActive: { true },
+            now: { currentDate }
+        )
+        signal.startIfNeeded()
+        signal.setCaptureContextActive(
+            true,
+            minimumActiveDuration: PresenceEngine.minimumZoomSignalDuration
+        )
+
+        for _ in 0..<11 {
+            engine.deliver(try makeBuffer(rms: 0.1, duration: 0.25))
+            signal.flushPendingSamplesForTesting()
+            currentDate = currentDate.addingTimeInterval(0.25)
+        }
+        XCTAssertNil(signal.lastVoiceActivityDate)
+
+        let qualifyingEvent = expectation(description: "three-second signal qualifies")
+        signal.onQualifyingActivity = { _ in qualifyingEvent.fulfill() }
+        engine.deliver(try makeBuffer(rms: 0.1, duration: 0.25))
+        signal.flushPendingSamplesForTesting()
+
+        wait(for: [qualifyingEvent], timeout: 1)
+        XCTAssertEqual(signal.lastVoiceActivityDate, currentDate)
+    }
+
+    func test_changingQualificationDuration_discardsEarlierPartialEvidence() throws {
+        let engine = FakeVoiceActivityAudioEngine()
+        let signal = VoiceActivitySignal(
+            threshold: 0.02,
+            minimumActiveDuration: 0.25,
+            engine: engine,
+            microphoneActive: { true }
+        )
+        signal.startIfNeeded()
+        engine.deliver(try makeBuffer(rms: 0.1, duration: 0.2))
+        signal.flushPendingSamplesForTesting()
+
+        signal.setCaptureContextActive(true, minimumActiveDuration: 3)
+        engine.deliver(try makeBuffer(rms: 0.1, duration: 0.1))
+        signal.flushPendingSamplesForTesting()
+
+        XCTAssertNil(signal.lastVoiceActivityDate)
+    }
+
     func test_deinit_afterStartSucceeds_stopsEngineAndRemovesTap() {
         let engine = FakeVoiceActivityAudioEngine()
         var signal: VoiceActivitySignal? = VoiceActivitySignal(engine: engine)

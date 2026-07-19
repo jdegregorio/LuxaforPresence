@@ -8,11 +8,24 @@ protocol VoiceActivitySignalProtocol: AnyObject {
     var authorizationState: MicrophoneAuthorizationState { get }
     func requestAccessIfNeeded()
     func setCaptureContextActive(_ active: Bool)
+    func setCaptureContextActive(
+        _ active: Bool,
+        minimumActiveDuration: TimeInterval
+    )
     func isVoiceActive() -> Bool
     var lastVoiceActivityDate: Date? { get }
     func suspend()
     func resume()
     func reset()
+}
+
+extension VoiceActivitySignalProtocol {
+    func setCaptureContextActive(
+        _ active: Bool,
+        minimumActiveDuration: TimeInterval
+    ) {
+        setCaptureContextActive(active)
+    }
 }
 
 protocol VoiceActivityAudioEngine: AnyObject {
@@ -72,6 +85,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     private let engine: VoiceActivityAudioEngine
     private let retryScheduler: VoiceActivityRetryScheduling
     private let threshold: Double
+    private let defaultMinimumActiveDuration: TimeInterval
     private let microphoneActive: () -> Bool
     private let microphoneProbeInterval: TimeInterval
     private let now: () -> Date
@@ -94,6 +108,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     private var lifecycleState = LifecycleState.stopped
     private var authorizationGranted = false
     private var captureContextActive = false
+    private var captureMinimumActiveDuration: TimeInterval
     private var acceptingSamples = false
     private var cachedMicrophoneActive = false
     private var resetInProgress = false
@@ -111,9 +126,11 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         maxStartAttempts: Int = 3,
         retryDelay: TimeInterval = 1
     ) {
+        let normalizedMinimumActiveDuration = max(0.25, minimumActiveDuration)
         self.engine = engine
         self.retryScheduler = retryScheduler
         self.threshold = threshold
+        self.defaultMinimumActiveDuration = normalizedMinimumActiveDuration
         self.microphoneActive = microphoneActive
         self.microphoneProbeInterval = max(0.05, microphoneProbeInterval)
         self.now = now
@@ -121,8 +138,9 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         self.retryDelay = max(0, retryDelay)
         self.debouncer = VoiceActivityDebouncer(
             threshold: threshold,
-            minimumActiveDuration: minimumActiveDuration
+            minimumActiveDuration: normalizedMinimumActiveDuration
         )
+        self.captureMinimumActiveDuration = normalizedMinimumActiveDuration
         processingQueue.setSpecific(key: processingQueueKey, value: 1)
     }
 
@@ -214,35 +232,52 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     func startIfNeeded() {
         lifecycleLock.lock()
         authorizationGranted = true
-        let contextChanged = !captureContextActive
-        captureContextActive = true
-        let shouldStart = lifecycleState == .stopped
         lifecycleLock.unlock()
-
-        if contextChanged {
-            prepareForCaptureContext()
-        }
-        if shouldStart {
-            attemptStart(remainingAttempts: maxStartAttempts, from: .stopped)
-        }
+        setCaptureContextActive(
+            true,
+            minimumActiveDuration: defaultMinimumActiveDuration
+        )
     }
 
     func setCaptureContextActive(_ active: Bool) {
+        setCaptureContextActive(
+            active,
+            minimumActiveDuration: defaultMinimumActiveDuration
+        )
+    }
+
+    func setCaptureContextActive(
+        _ active: Bool,
+        minimumActiveDuration: TimeInterval
+    ) {
+        let normalizedMinimumActiveDuration = max(0.25, minimumActiveDuration)
         lifecycleLock.lock()
-        guard captureContextActive != active else {
+        let contextChanged = captureContextActive != active
+        let minimumDurationChanged = captureMinimumActiveDuration
+            != normalizedMinimumActiveDuration
+        let shouldStart = active
+            && authorizationGranted
+            && lifecycleState == .stopped
+        guard contextChanged || minimumDurationChanged || shouldStart else {
             lifecycleLock.unlock()
             return
         }
         captureContextActive = active
+        captureMinimumActiveDuration = normalizedMinimumActiveDuration
 
         if active {
-            let shouldStart = authorizationGranted && lifecycleState == .stopped
             lifecycleLock.unlock()
-            prepareForCaptureContext()
+            if contextChanged || minimumDurationChanged {
+                prepareForCaptureContext(
+                    minimumActiveDuration: normalizedMinimumActiveDuration
+                )
+            }
             if shouldStart {
                 attemptStart(remainingAttempts: maxStartAttempts, from: .stopped)
             }
-            logger.debug("Voice activity capture context became active")
+            logger.debug(
+                "Voice activity capture context configured active=true minimumActiveDuration=\(normalizedMinimumActiveDuration, privacy: .public)s"
+            )
             return
         }
 
@@ -495,14 +530,20 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         sampleLock.unlock()
     }
 
-    private func prepareForCaptureContext() {
-        resetDebounce(preserveLastActivity: true)
+    private func prepareForCaptureContext(minimumActiveDuration: TimeInterval) {
+        resetDebounce(
+            preserveLastActivity: true,
+            minimumActiveDuration: minimumActiveDuration
+        )
         sampleLock.lock()
         cachedMicrophoneActive = true
         sampleLock.unlock()
     }
 
-    private func resetDebounce(preserveLastActivity: Bool) {
+    private func resetDebounce(
+        preserveLastActivity: Bool,
+        minimumActiveDuration: TimeInterval? = nil
+    ) {
         sampleLock.lock()
         sampleGeneration &+= 1
         cachedMicrophoneActive = false
@@ -513,7 +554,11 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         let reset = { [self] in
             sampleLock.lock()
             stateLock.lock()
-            debouncer.reset()
+            if let minimumActiveDuration {
+                debouncer.reset(minimumActiveDuration: minimumActiveDuration)
+            } else {
+                debouncer.reset()
+            }
             nextMicrophoneProbeDate = nil
             voiceActive = false
             currentRMS = nil
