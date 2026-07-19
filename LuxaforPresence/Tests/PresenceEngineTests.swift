@@ -789,6 +789,36 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertTrue(harness.luxafor.actions.isEmpty)
     }
 
+    func test_beginOutputRetirement_discardsQueuedAndLaterReassertions() {
+        let harness = PresenceEngineHarness()
+        harness.meetingDetector.isActive = true
+        let engine = harness.makeEngine()
+        engine.prepare()
+        tickAndWait(engine)
+        let callbacksReturned = DispatchSemaphore(value: 0)
+
+        DispatchQueue.global().async {
+            harness.localOutputHeartbeat.fire()
+            harness.localServiceRecoveryMonitor.reconnect()
+            callbacksReturned.signal()
+        }
+        XCTAssertEqual(callbacksReturned.wait(timeout: .now() + 1), .success)
+
+        engine.beginOutputRetirement()
+        harness.localOutputHeartbeat.fire()
+        harness.localServiceRecoveryMonitor.reconnect()
+        let mainQueueDrained = expectation(description: "stale reassertions discarded")
+        DispatchQueue.main.async {
+            mainQueueDrained.fulfill()
+        }
+        wait(for: [mainQueueDrained], timeout: 1)
+
+        XCTAssertEqual(
+            harness.luxafor.actions,
+            [.yellow(harness.config.remoteWebhookUserId)]
+        )
+    }
+
     func test_secondSleepDuringWakePoll_doesNotResumeOutputOrRecovery() {
         let harness = PresenceEngineHarness()
         let detector = OneShotBlockingMeetingDetector(initialResult: true)

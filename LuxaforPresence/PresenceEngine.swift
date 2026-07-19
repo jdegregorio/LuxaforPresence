@@ -566,8 +566,22 @@ final class PresenceEngine {
     }
 
     func reassertOutput() {
+        outputLifecycleLock.lock()
+        guard !outputIsSuspended else {
+            outputLifecycleLock.unlock()
+            logger.debug("Skipping output reassertion because output is suspended")
+            return
+        }
+        let lifecycleGeneration = outputLifecycleGeneration
+        outputLifecycleLock.unlock()
+
         deliverOnMain { [weak self] in
-            self?.outputController.reassert()
+            guard let self else { return }
+            guard self.isCurrentAwakeLifecycle(generation: lifecycleGeneration) else {
+                self.logger.debug("Discarding stale output reassertion")
+                return
+            }
+            self.outputController.reassert()
         }
     }
 
