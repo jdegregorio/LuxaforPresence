@@ -6,6 +6,7 @@ final class ConfigValidationTests: XCTestCase {
         let config = PresenceEngine.Config(values: [
             "pollInterval": 0.01,
             "vadThreshold": 1.01,
+            "zoomVadThreshold": 0,
             "vadMinimumActiveMilliseconds": -1,
             "recentVoiceSeconds": -1,
             "voiceCooldownSeconds": -1,
@@ -19,6 +20,10 @@ final class ConfigValidationTests: XCTestCase {
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.defaultPollInterval)
         XCTAssertEqual(config.vadThreshold, PresenceEngine.Config.defaultVadThreshold)
+        XCTAssertEqual(
+            config.zoomVadThreshold,
+            PresenceEngine.Config.defaultZoomVadThreshold
+        )
         XCTAssertEqual(
             config.vadMinimumActiveMilliseconds,
             PresenceEngine.Config.defaultVadMinimumActiveMilliseconds
@@ -52,6 +57,7 @@ final class ConfigValidationTests: XCTestCase {
         let config = PresenceEngine.Config(values: [
             "pollInterval": PresenceEngine.Config.minimumPollInterval,
             "vadThreshold": 1.0,
+            "zoomVadThreshold": 1.0,
             "vadMinimumActiveMilliseconds": PresenceEngine.Config.minimumVadMinimumActiveMilliseconds,
             "recentVoiceSeconds": 0.0,
             "voiceCooldownSeconds": 0.0,
@@ -61,6 +67,7 @@ final class ConfigValidationTests: XCTestCase {
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.minimumPollInterval)
         XCTAssertEqual(config.vadThreshold, 1.0)
+        XCTAssertEqual(config.zoomVadThreshold, 1.0)
         XCTAssertEqual(
             config.vadMinimumActiveMilliseconds,
             PresenceEngine.Config.minimumVadMinimumActiveMilliseconds
@@ -79,6 +86,7 @@ final class ConfigValidationTests: XCTestCase {
         let config = PresenceEngine.Config(values: [
             "pollInterval": true,
             "vadThreshold": false,
+            "zoomVadThreshold": true,
             "vadMinimumActiveMilliseconds": true,
             "recentVoiceSeconds": true,
             "voiceCooldownSeconds": false,
@@ -88,6 +96,10 @@ final class ConfigValidationTests: XCTestCase {
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.defaultPollInterval)
         XCTAssertEqual(config.vadThreshold, PresenceEngine.Config.defaultVadThreshold)
+        XCTAssertEqual(
+            config.zoomVadThreshold,
+            PresenceEngine.Config.defaultZoomVadThreshold
+        )
         XCTAssertEqual(
             config.vadMinimumActiveMilliseconds,
             PresenceEngine.Config.defaultVadMinimumActiveMilliseconds
@@ -114,6 +126,7 @@ final class ConfigValidationTests: XCTestCase {
         let config = PresenceEngine.Config(values: [
             "pollInterval": Double.infinity,
             "vadThreshold": Double.nan,
+            "zoomVadThreshold": Double.infinity,
             "vadMinimumActiveMilliseconds": Double.infinity,
             "recentVoiceSeconds": Double.infinity,
             "voiceCooldownSeconds": Double.nan,
@@ -123,6 +136,10 @@ final class ConfigValidationTests: XCTestCase {
 
         XCTAssertEqual(config.pollInterval, PresenceEngine.Config.defaultPollInterval)
         XCTAssertEqual(config.vadThreshold, PresenceEngine.Config.defaultVadThreshold)
+        XCTAssertEqual(
+            config.zoomVadThreshold,
+            PresenceEngine.Config.defaultZoomVadThreshold
+        )
         XCTAssertEqual(
             config.vadMinimumActiveMilliseconds,
             PresenceEngine.Config.defaultVadMinimumActiveMilliseconds
@@ -204,7 +221,8 @@ final class ConfigValidationTests: XCTestCase {
 
         XCTAssertEqual(config.propertyListValues["recentVoiceSeconds"] as? Double, 25)
         XCTAssertEqual(config.propertyListValues["recentVoiceColor"] as? String, "#ABCDEF")
-        XCTAssertEqual(config.propertyListValues.count, 18)
+        XCTAssertEqual(config.propertyListValues["zoomVadThreshold"] as? Double, 0.02)
+        XCTAssertEqual(config.propertyListValues.count, 19)
     }
 
     func test_lightOutput_usesConfiguredColorForEveryOperationalState() {

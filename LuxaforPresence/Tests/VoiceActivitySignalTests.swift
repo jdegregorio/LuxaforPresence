@@ -333,11 +333,11 @@ final class VoiceActivitySignalTests: XCTestCase {
         XCTAssertNil(signal.lastVoiceActivityDate)
     }
 
-    func test_zoomQualification_requiresThreeSecondsOfContinuousSignal() throws {
+    func test_zoomSpeechThreshold_ignoresQuietNoiseAndQualifiesSpeechPromptly() throws {
         let engine = FakeVoiceActivityAudioEngine()
         var currentDate = Date(timeIntervalSinceReferenceDate: 1_500)
         let signal = VoiceActivitySignal(
-            threshold: 0.02,
+            threshold: 0.001,
             minimumActiveDuration: 0.25,
             engine: engine,
             microphoneActive: { true },
@@ -346,17 +346,21 @@ final class VoiceActivitySignalTests: XCTestCase {
         signal.startIfNeeded()
         signal.setCaptureContextActive(
             true,
-            minimumActiveDuration: PresenceEngine.minimumZoomSignalDuration
+            minimumActiveDuration: 0.25,
+            threshold: PresenceEngine.Config.defaultZoomVadThreshold
         )
 
-        for _ in 0..<11 {
-            engine.deliver(try makeBuffer(rms: 0.1, duration: 0.25))
+        // The reported muted-call floor was 0.0027–0.0037 RMS. It must remain
+        // quiet indefinitely even though it exceeds the general 0.001 gate.
+        for _ in 0..<16 {
+            engine.deliver(try makeBuffer(rms: 0.0037, duration: 0.25))
             signal.flushPendingSamplesForTesting()
             currentDate = currentDate.addingTimeInterval(0.25)
         }
         XCTAssertNil(signal.lastVoiceActivityDate)
+        XCTAssertFalse(signal.isVoiceActive())
 
-        let qualifyingEvent = expectation(description: "three-second signal qualifies")
+        let qualifyingEvent = expectation(description: "speech-level signal qualifies")
         signal.onQualifyingActivity = { _ in qualifyingEvent.fulfill() }
         engine.deliver(try makeBuffer(rms: 0.1, duration: 0.25))
         signal.flushPendingSamplesForTesting()
@@ -365,7 +369,7 @@ final class VoiceActivitySignalTests: XCTestCase {
         XCTAssertEqual(signal.lastVoiceActivityDate, currentDate)
     }
 
-    func test_changingQualificationDuration_discardsEarlierPartialEvidence() throws {
+    func test_changingCaptureThreshold_discardsEarlierPartialEvidence() throws {
         let engine = FakeVoiceActivityAudioEngine()
         let signal = VoiceActivitySignal(
             threshold: 0.02,
@@ -377,7 +381,11 @@ final class VoiceActivitySignalTests: XCTestCase {
         engine.deliver(try makeBuffer(rms: 0.1, duration: 0.2))
         signal.flushPendingSamplesForTesting()
 
-        signal.setCaptureContextActive(true, minimumActiveDuration: 3)
+        signal.setCaptureContextActive(
+            true,
+            minimumActiveDuration: 0.25,
+            threshold: 0.04
+        )
         engine.deliver(try makeBuffer(rms: 0.1, duration: 0.1))
         signal.flushPendingSamplesForTesting()
 

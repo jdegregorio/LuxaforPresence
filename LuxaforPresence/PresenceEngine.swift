@@ -2,8 +2,6 @@ import Foundation
 import OSLog
 
 final class PresenceEngine {
-    static let minimumZoomSignalDuration: TimeInterval = 3
-
     private enum TickResult {
         case automatic(PresenceSnapshot, voiceTimelineGeneration: UInt64)
         case forced(PresenceState)
@@ -13,6 +11,7 @@ final class PresenceEngine {
         static let defaultPollInterval: TimeInterval = 2.0
         static let minimumPollInterval: TimeInterval = 0.25
         static let defaultVadThreshold = 0.001
+        static let defaultZoomVadThreshold = 0.02
         static let defaultRecentVoiceSeconds: TimeInterval = 300
         static let defaultVoiceCooldownSeconds: TimeInterval = 300
         static let defaultVadMinimumActiveMilliseconds: TimeInterval = 250
@@ -34,6 +33,7 @@ final class PresenceEngine {
         var detectZoom = true
         var vadEnabled = true
         var vadThreshold = defaultVadThreshold
+        var zoomVadThreshold = defaultZoomVadThreshold
         var vadMinimumActiveMilliseconds = defaultVadMinimumActiveMilliseconds
         var recentVoiceSeconds = defaultRecentVoiceSeconds
         var voiceCooldownSeconds = defaultVoiceCooldownSeconds
@@ -129,6 +129,16 @@ final class PresenceEngine {
                     vadThreshold = threshold
                 } else {
                     logger.error("Invalid vadThreshold; expected a finite value greater than 0 and at most 1. Using \(Self.defaultVadThreshold, privacy: .public).")
+                }
+            }
+            if let value = values["zoomVadThreshold"] {
+                if let threshold = Self.number(from: value),
+                   threshold.isFinite,
+                   threshold > 0,
+                   threshold <= 1 {
+                    zoomVadThreshold = threshold
+                } else {
+                    logger.error("Invalid zoomVadThreshold; expected a finite value greater than 0 and at most 1. Using \(Self.defaultZoomVadThreshold, privacy: .public).")
                 }
             }
             if let value = values["vadMinimumActiveMilliseconds"] {
@@ -254,6 +264,7 @@ final class PresenceEngine {
             let finalizedDetectZoom = detectZoom
             let finalizedVadEnabled = vadEnabled
             let finalizedVadThreshold = vadThreshold
+            let finalizedZoomVadThreshold = zoomVadThreshold
             let finalizedVadMinimumActiveMilliseconds = vadMinimumActiveMilliseconds
             let finalizedRecentVoiceSeconds = recentVoiceSeconds
             let finalizedVoiceCooldownSeconds = voiceCooldownSeconds
@@ -264,7 +275,7 @@ final class PresenceEngine {
             let finalizedZoomQuietColor = zoomQuietColor
             let finalizedRecentVoiceColor = recentVoiceColor
             let finalizedVoiceCooldownColor = voiceCooldownColor
-            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, detectZoom \(finalizedDetectZoom, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), vadMinimumActiveMilliseconds \(finalizedVadMinimumActiveMilliseconds, privacy: .public), recentVoiceSeconds \(finalizedRecentVoiceSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public), localOutputHeartbeatEnabled \(finalizedLocalOutputHeartbeatEnabled, privacy: .public), localOutputReassertSeconds \(finalizedLocalOutputReassertSeconds, privacy: .public), outputBrightness \(finalizedOutputBrightness, privacy: .public), availableColor \(finalizedAvailableColor.localHex, privacy: .public), zoomQuietColor \(finalizedZoomQuietColor.localHex, privacy: .public), recentVoiceColor \(finalizedRecentVoiceColor.localHex, privacy: .public), voiceCooldownColor \(finalizedVoiceCooldownColor.localHex, privacy: .public)")
+            logger.log("Config initialized: transport \(finalizedTransportMode.rawValue, privacy: .public), pollInterval \(finalizedPollInterval, privacy: .public)s, detectZoom \(finalizedDetectZoom, privacy: .public), vadEnabled \(finalizedVadEnabled, privacy: .public), vadThreshold \(finalizedVadThreshold, privacy: .public), zoomVadThreshold \(finalizedZoomVadThreshold, privacy: .public), vadMinimumActiveMilliseconds \(finalizedVadMinimumActiveMilliseconds, privacy: .public), recentVoiceSeconds \(finalizedRecentVoiceSeconds, privacy: .public), voiceCooldownSeconds \(finalizedVoiceCooldownSeconds, privacy: .public), localOutputHeartbeatEnabled \(finalizedLocalOutputHeartbeatEnabled, privacy: .public), localOutputReassertSeconds \(finalizedLocalOutputReassertSeconds, privacy: .public), outputBrightness \(finalizedOutputBrightness, privacy: .public), availableColor \(finalizedAvailableColor.localHex, privacy: .public), zoomQuietColor \(finalizedZoomQuietColor.localHex, privacy: .public), recentVoiceColor \(finalizedRecentVoiceColor.localHex, privacy: .public), voiceCooldownColor \(finalizedVoiceCooldownColor.localHex, privacy: .public)")
         }
 
         var vadMinimumActiveDuration: TimeInterval {
@@ -281,6 +292,7 @@ final class PresenceEngine {
                 "detectZoom": detectZoom,
                 "vadEnabled": vadEnabled,
                 "vadThreshold": vadThreshold,
+                "zoomVadThreshold": zoomVadThreshold,
                 "vadMinimumActiveMilliseconds": vadMinimumActiveMilliseconds,
                 "recentVoiceSeconds": recentVoiceSeconds,
                 "voiceCooldownSeconds": voiceCooldownSeconds,
@@ -661,15 +673,12 @@ final class PresenceEngine {
             microphoneActivity: microphoneActivity
         )
         if config.vadEnabled {
-            let minimumActiveDuration = zoomActive
-                ? max(
-                    config.vadMinimumActiveDuration,
-                    Self.minimumZoomSignalDuration
-                )
-                : config.vadMinimumActiveDuration
             voiceActivity.setCaptureContextActive(
                 microphoneActive,
-                minimumActiveDuration: minimumActiveDuration
+                minimumActiveDuration: config.vadMinimumActiveDuration,
+                threshold: zoomActive
+                    ? config.zoomVadThreshold
+                    : config.vadThreshold
             )
         }
         let voiceSamplingActive = config.vadEnabled

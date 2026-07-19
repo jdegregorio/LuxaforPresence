@@ -12,6 +12,11 @@ protocol VoiceActivitySignalProtocol: AnyObject {
         _ active: Bool,
         minimumActiveDuration: TimeInterval
     )
+    func setCaptureContextActive(
+        _ active: Bool,
+        minimumActiveDuration: TimeInterval,
+        threshold: Double
+    )
     func isVoiceActive() -> Bool
     var lastVoiceActivityDate: Date? { get }
     func suspend()
@@ -25,6 +30,17 @@ extension VoiceActivitySignalProtocol {
         minimumActiveDuration: TimeInterval
     ) {
         setCaptureContextActive(active)
+    }
+
+    func setCaptureContextActive(
+        _ active: Bool,
+        minimumActiveDuration: TimeInterval,
+        threshold: Double
+    ) {
+        setCaptureContextActive(
+            active,
+            minimumActiveDuration: minimumActiveDuration
+        )
     }
 }
 
@@ -84,7 +100,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     )
     private let engine: VoiceActivityAudioEngine
     private let retryScheduler: VoiceActivityRetryScheduling
-    private let threshold: Double
+    private let defaultThreshold: Double
     private let defaultMinimumActiveDuration: TimeInterval
     private let microphoneActive: () -> Bool
     private let microphoneProbeInterval: TimeInterval
@@ -109,6 +125,8 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
     private var authorizationGranted = false
     private var captureContextActive = false
     private var captureMinimumActiveDuration: TimeInterval
+    private var configuredCaptureThreshold: Double
+    private var processingThreshold: Double
     private var acceptingSamples = false
     private var cachedMicrophoneActive = false
     private var resetInProgress = false
@@ -129,7 +147,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         let normalizedMinimumActiveDuration = max(0.25, minimumActiveDuration)
         self.engine = engine
         self.retryScheduler = retryScheduler
-        self.threshold = threshold
+        self.defaultThreshold = threshold
         self.defaultMinimumActiveDuration = normalizedMinimumActiveDuration
         self.microphoneActive = microphoneActive
         self.microphoneProbeInterval = max(0.05, microphoneProbeInterval)
@@ -141,6 +159,8 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
             minimumActiveDuration: normalizedMinimumActiveDuration
         )
         self.captureMinimumActiveDuration = normalizedMinimumActiveDuration
+        self.configuredCaptureThreshold = threshold
+        self.processingThreshold = threshold
         processingQueue.setSpecific(key: processingQueueKey, value: 1)
     }
 
@@ -235,14 +255,16 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         lifecycleLock.unlock()
         setCaptureContextActive(
             true,
-            minimumActiveDuration: defaultMinimumActiveDuration
+            minimumActiveDuration: defaultMinimumActiveDuration,
+            threshold: defaultThreshold
         )
     }
 
     func setCaptureContextActive(_ active: Bool) {
         setCaptureContextActive(
             active,
-            minimumActiveDuration: defaultMinimumActiveDuration
+            minimumActiveDuration: defaultMinimumActiveDuration,
+            threshold: defaultThreshold
         )
     }
 
@@ -250,33 +272,51 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         _ active: Bool,
         minimumActiveDuration: TimeInterval
     ) {
+        setCaptureContextActive(
+            active,
+            minimumActiveDuration: minimumActiveDuration,
+            threshold: defaultThreshold
+        )
+    }
+
+    func setCaptureContextActive(
+        _ active: Bool,
+        minimumActiveDuration: TimeInterval,
+        threshold: Double
+    ) {
         let normalizedMinimumActiveDuration = max(0.25, minimumActiveDuration)
+        let normalizedThreshold = threshold.isFinite && threshold > 0 && threshold <= 1
+            ? threshold
+            : defaultThreshold
         lifecycleLock.lock()
         let contextChanged = captureContextActive != active
         let minimumDurationChanged = captureMinimumActiveDuration
             != normalizedMinimumActiveDuration
+        let thresholdChanged = configuredCaptureThreshold != normalizedThreshold
         let shouldStart = active
             && authorizationGranted
             && lifecycleState == .stopped
-        guard contextChanged || minimumDurationChanged || shouldStart else {
+        guard contextChanged || minimumDurationChanged || thresholdChanged || shouldStart else {
             lifecycleLock.unlock()
             return
         }
         captureContextActive = active
         captureMinimumActiveDuration = normalizedMinimumActiveDuration
+        configuredCaptureThreshold = normalizedThreshold
 
         if active {
             lifecycleLock.unlock()
-            if contextChanged || minimumDurationChanged {
+            if contextChanged || minimumDurationChanged || thresholdChanged {
                 prepareForCaptureContext(
-                    minimumActiveDuration: normalizedMinimumActiveDuration
+                    minimumActiveDuration: normalizedMinimumActiveDuration,
+                    threshold: normalizedThreshold
                 )
             }
             if shouldStart {
                 attemptStart(remainingAttempts: maxStartAttempts, from: .stopped)
             }
             logger.debug(
-                "Voice activity capture context configured active=true minimumActiveDuration=\(normalizedMinimumActiveDuration, privacy: .public)s"
+                "Voice activity capture context configured active=true threshold=\(normalizedThreshold, privacy: .public) minimumActiveDuration=\(normalizedMinimumActiveDuration, privacy: .public)s"
             )
             return
         }
@@ -448,7 +488,7 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         sampleLock.unlock()
         guard shouldProcess else { return }
 
-        let rawAboveThreshold = rms.isFinite && rms >= threshold
+        let rawAboveThreshold = rms.isFinite && rms >= processingThreshold
         var probedMicrophoneActive: Bool?
         if rawAboveThreshold,
            nextMicrophoneProbeDate.map({ date >= $0 }) ?? true {
@@ -530,10 +570,14 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         sampleLock.unlock()
     }
 
-    private func prepareForCaptureContext(minimumActiveDuration: TimeInterval) {
+    private func prepareForCaptureContext(
+        minimumActiveDuration: TimeInterval,
+        threshold: Double
+    ) {
         resetDebounce(
             preserveLastActivity: true,
-            minimumActiveDuration: minimumActiveDuration
+            minimumActiveDuration: minimumActiveDuration,
+            threshold: threshold
         )
         sampleLock.lock()
         cachedMicrophoneActive = true
@@ -542,7 +586,8 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
 
     private func resetDebounce(
         preserveLastActivity: Bool,
-        minimumActiveDuration: TimeInterval? = nil
+        minimumActiveDuration: TimeInterval? = nil,
+        threshold: Double? = nil
     ) {
         sampleLock.lock()
         sampleGeneration &+= 1
@@ -554,7 +599,13 @@ final class VoiceActivitySignal: VoiceActivitySignalProtocol {
         let reset = { [self] in
             sampleLock.lock()
             stateLock.lock()
-            if let minimumActiveDuration {
+            if let minimumActiveDuration, let threshold {
+                processingThreshold = threshold
+                debouncer.reset(
+                    threshold: threshold,
+                    minimumActiveDuration: minimumActiveDuration
+                )
+            } else if let minimumActiveDuration {
                 debouncer.reset(minimumActiveDuration: minimumActiveDuration)
             } else {
                 debouncer.reset()

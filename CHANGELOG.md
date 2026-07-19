@@ -14,6 +14,8 @@ All notable changes to LuxaforPresence will be documented here.
 - Package the signal-timeline, Zoom-qualification, and settings-lifecycle fixes as version `1.9.4`.
 - Detect current Zoom calls from Zoom-owned microphone input and in-call power assertions, while preserving the legacy helper fallback, so muted call startup enters Zoom Quiet without a transient Available or false Recent Signal state.
 - Package the Zoom state-transition fix as version `1.9.5`.
+- Use a separate speech-level threshold during Zoom calls so steady muted-call microphone noise remains Zoom Quiet, while real talking qualifies promptly using the configured active-signal duration.
+- Package the Zoom voice-qualification fix as version `1.9.6`.
 
 ## [1.9.1] – 2026-07-18
 

@@ -35,7 +35,8 @@ final class ConfigurationFileManagerTests: XCTestCase {
         let values = try loadConfiguration(at: configurationURL)
         XCTAssertEqual(values["recentVoiceSeconds"] as? Double, 45)
         XCTAssertEqual(values["recentVoiceColor"] as? String, "#123456")
-        XCTAssertEqual(values.count, 18)
+        XCTAssertEqual(values["zoomVadThreshold"] as? Double, 0.02)
+        XCTAssertEqual(values.count, 19)
         let attributes = try FileManager.default.attributesOfItem(
             atPath: configurationURL.path
         )

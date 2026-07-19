@@ -27,6 +27,7 @@ struct PresenceSettingsDraft {
     var detectZoom: Bool
     var vadEnabled: Bool
     var vadThreshold: Double
+    var zoomVadThreshold: Double
     var vadMinimumActiveMilliseconds: Double
     var recentVoiceSeconds: Double
     var voiceCooldownSeconds: Double
@@ -47,6 +48,7 @@ struct PresenceSettingsDraft {
         detectZoom = config.detectZoom
         vadEnabled = config.vadEnabled
         vadThreshold = config.vadThreshold
+        zoomVadThreshold = config.zoomVadThreshold
         vadMinimumActiveMilliseconds = config.vadMinimumActiveMilliseconds
         recentVoiceSeconds = config.recentVoiceSeconds
         voiceCooldownSeconds = config.voiceCooldownSeconds
@@ -80,7 +82,12 @@ struct PresenceSettingsDraft {
         ) { $0 >= PresenceEngine.Config.minimumPollInterval }
         try validate(
             vadThreshold,
-            name: "Signal threshold",
+            name: "Other-app signal threshold",
+            requirement: "greater than 0 and no more than 1"
+        ) { $0 > 0 && $0 <= 1 }
+        try validate(
+            zoomVadThreshold,
+            name: "Zoom speech threshold",
             requirement: "greater than 0 and no more than 1"
         ) { $0 > 0 && $0 <= 1 }
         try validate(
@@ -122,6 +129,7 @@ struct PresenceSettingsDraft {
             "detectZoom": detectZoom,
             "vadEnabled": vadEnabled,
             "vadThreshold": vadThreshold,
+            "zoomVadThreshold": zoomVadThreshold,
             "vadMinimumActiveMilliseconds": vadMinimumActiveMilliseconds,
             "recentVoiceSeconds": recentVoiceSeconds,
             "voiceCooldownSeconds": voiceCooldownSeconds,
@@ -315,13 +323,14 @@ struct PresenceSettingsView: View {
         Form {
             Section("Polling and signal qualification") {
                 numericField("Poll interval", value: $draft.pollInterval, unit: "seconds")
-                numericField("Signal threshold", value: $draft.vadThreshold, unit: "RMS")
+                numericField("Other-app signal threshold", value: $draft.vadThreshold, unit: "RMS")
+                numericField("Zoom speech threshold", value: $draft.zoomVadThreshold, unit: "RMS")
                 numericField(
                     "Minimum active signal",
                     value: $draft.vadMinimumActiveMilliseconds,
                     unit: "milliseconds"
                 )
-                Text("Microphone-only tools use this duration. Zoom requires at least three seconds of continuous signal before Recent turns red.")
+                Text("Zoom uses its separate speech threshold so a steady microphone noise floor stays Quiet. Both contexts use the minimum active duration.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
