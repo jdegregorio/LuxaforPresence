@@ -2,6 +2,8 @@ import Foundation
 import OSLog
 
 final class PresenceEngine {
+    static let minimumZoomSignalDuration: TimeInterval = 3
+
     private enum TickResult {
         case automatic(PresenceSnapshot, voiceTimelineGeneration: UInt64)
         case forced(PresenceState)
@@ -404,9 +406,7 @@ final class PresenceEngine {
     private var pollCompletions: [() -> Void] = []
     private var automaticReevaluationPending = false
     private var automaticReevaluationCompletions: [() -> Void] = []
-    private var communicationContextWasActive = false
     private var lastObservedVoiceActivityDate: Date?
-    private var sessionVoiceActivityDate: Date?
     private var lastQualifiedVoiceActivityDate: Date?
     private var lastState: PresenceState = .unknown
     private var forcedState: PresenceState?
@@ -505,9 +505,7 @@ final class PresenceEngine {
         voiceActivity.reset()
         pollQueue.async { [weak self] in
             guard let self else { return }
-            self.communicationContextWasActive = false
             self.lastObservedVoiceActivityDate = nil
-            self.sessionVoiceActivityDate = nil
             self.lastQualifiedVoiceActivityDate = nil
             self.logger.log("Voice timeline cleared; requesting automatic reevaluation")
             self.requestAutomaticReevaluation()
@@ -527,6 +525,15 @@ final class PresenceEngine {
         deliverOnMain { [weak self] in
             self?.outputController.suspend()
         }
+    }
+
+    /// Immediately fences in-flight state results before potentially blocking
+    /// audio teardown is handed to the retirement queue.
+    func beginOutputRetirement() {
+        outputLifecycleLock.lock()
+        outputLifecycleGeneration &+= 1
+        outputIsSuspended = true
+        outputLifecycleLock.unlock()
     }
 
     /// Reevaluates signals while output remains suspended, then reasserts the
@@ -559,8 +566,22 @@ final class PresenceEngine {
     }
 
     func reassertOutput() {
+        outputLifecycleLock.lock()
+        guard !outputIsSuspended else {
+            outputLifecycleLock.unlock()
+            logger.debug("Skipping output reassertion because output is suspended")
+            return
+        }
+        let lifecycleGeneration = outputLifecycleGeneration
+        outputLifecycleLock.unlock()
+
         deliverOnMain { [weak self] in
-            self?.outputController.reassert()
+            guard let self else { return }
+            guard self.isCurrentAwakeLifecycle(generation: lifecycleGeneration) else {
+                self.logger.debug("Discarding stale output reassertion")
+                return
+            }
+            self.outputController.reassert()
         }
     }
 
@@ -637,7 +658,16 @@ final class PresenceEngine {
         let zoomActive = meetingDetector.isMeetingActive()
         let microphoneActive = micCam.isMicrophoneInUseByAnotherApplication()
         if config.vadEnabled {
-            voiceActivity.setCaptureContextActive(microphoneActive)
+            let minimumActiveDuration = zoomActive
+                ? max(
+                    config.vadMinimumActiveDuration,
+                    Self.minimumZoomSignalDuration
+                )
+                : config.vadMinimumActiveDuration
+            voiceActivity.setCaptureContextActive(
+                microphoneActive,
+                minimumActiveDuration: minimumActiveDuration
+            )
         }
         let voiceSamplingActive = config.vadEnabled
             ? voiceActivity.isCapturing
@@ -649,16 +679,14 @@ final class PresenceEngine {
             ? voiceActivity.lastVoiceActivityDate
             : nil
         let evaluatedAt = now()
-        let communicationContextActive = zoomActive || microphoneActive
-        let sessionVoiceActivityDate = updateVoiceSession(
-            observedVoiceActivityDate: observedVoiceActivityDate,
-            communicationContextActive: communicationContextActive
+        let timelineVoiceActivityDate = updateVoiceTimeline(
+            observedVoiceActivityDate: observedVoiceActivityDate
         )
 
         let decision = evaluateState(
             zoomActive: zoomActive,
             microphoneActive: microphoneActive,
-            lastVoiceActivityDate: sessionVoiceActivityDate,
+            lastVoiceActivityDate: timelineVoiceActivityDate,
             evaluatedAt: evaluatedAt
         )
         let snapshot = PresenceSnapshot(
@@ -679,13 +707,9 @@ final class PresenceEngine {
         return snapshot
     }
 
-    /// Accepts a new voice timestamp only while macOS currently reports external
-    /// microphone use. The accepted timestamp is scoped to one continuously observed
-    /// communication context so ending a call cannot color a later quiet session red.
-    private func updateVoiceSession(
-        observedVoiceActivityDate: Date?,
-        communicationContextActive: Bool
-    ) -> Date? {
+    /// Retains qualified input independently of the capture context so the complete
+    /// Recent -> Cooldown timeline can finish after dictation or a call releases its mic.
+    private func updateVoiceTimeline(observedVoiceActivityDate: Date?) -> Date? {
         let observationChanged = observedVoiceActivityDate != lastObservedVoiceActivityDate
         lastObservedVoiceActivityDate = observedVoiceActivityDate
 
@@ -695,22 +719,7 @@ final class PresenceEngine {
             // against a later poll, or a quick mute can discard real speech.
             lastQualifiedVoiceActivityDate = observedVoiceActivityDate
         }
-
-        guard communicationContextActive else {
-            communicationContextWasActive = false
-            sessionVoiceActivityDate = nil
-            return nil
-        }
-
-        if !communicationContextWasActive {
-            sessionVoiceActivityDate = nil
-        }
-        communicationContextWasActive = true
-
-        if observationChanged, let observedVoiceActivityDate {
-            sessionVoiceActivityDate = observedVoiceActivityDate
-        }
-        return sessionVoiceActivityDate
+        return lastQualifiedVoiceActivityDate
     }
 
     private func evaluateState(
@@ -719,10 +728,6 @@ final class PresenceEngine {
         lastVoiceActivityDate: Date?,
         evaluatedAt: Date
     ) -> (state: PresenceState, path: PresenceDecisionPath) {
-        guard zoomActive || microphoneActive else {
-            return (.available, .noCommunicationContext)
-        }
-
         if let lastVoiceActivityDate {
             let secondsSinceVoiceActivity = max(
                 0,
@@ -742,10 +747,16 @@ final class PresenceEngine {
         if zoomActive {
             return (.zoomQuiet, .zoomQuiet)
         }
-        return (.available, .available)
+        return microphoneActive
+            ? (.available, .available)
+            : (.available, .noCommunicationContext)
     }
 
     private func finishTick(_ result: TickResult) {
+        guard !isOutputSuspended() else {
+            logger.debug("Discarding signal result because output is suspended")
+            return
+        }
         switch result {
         case .automatic(let snapshot, let voiceTimelineGeneration):
             guard currentForcedState() == nil else {
@@ -799,6 +810,12 @@ final class PresenceEngine {
         outputLifecycleLock.lock()
         defer { outputLifecycleLock.unlock() }
         return !outputIsSuspended && outputLifecycleGeneration == generation
+    }
+
+    private func isOutputSuspended() -> Bool {
+        outputLifecycleLock.lock()
+        defer { outputLifecycleLock.unlock() }
+        return outputIsSuspended
     }
 
     private func currentForcedState() -> PresenceState? {

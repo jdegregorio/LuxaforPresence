@@ -8,6 +8,10 @@ All notable changes to LuxaforPresence will be documented here.
 - Package the destination comparison fix as version `1.9.2`.
 - Ignore CoreSpeech's persistent background voice-trigger input when deciding whether a user application is using the microphone, preventing LuxaforPresence from keeping its own sampler active after dictation ends.
 - Package the CoreSpeech input filtering fix as version `1.9.3`.
+- Preserve Recent Signal and Cooldown after a dictation or meeting app releases its microphone, then return to Zoom Quiet or Available only after the configured timeline expires.
+- Require three seconds of continuous non-silent input before a new Zoom session turns red, while keeping microphone-only dictation and recording tools responsive to the configured 250 ms minimum.
+- Retire the prior audio engine away from the main thread when settings are saved, fence its callbacks, and start the replacement in order so Core Audio teardown cannot freeze the settings UI.
+- Package the signal-timeline, Zoom-qualification, and settings-lifecycle fixes as version `1.9.4`.
 
 ## [1.9.1] – 2026-07-18
 

@@ -186,7 +186,7 @@ The saved file is readable only by the current user. The complete default config
 | `detectZoom` | `true` | Enables process-based Zoom detection. |
 | `vadEnabled` | `true` | Enables local input-energy analysis while any other process has active microphone input. |
 | `vadThreshold` | `0.001` | RMS threshold separating digital silence from a real input signal. Valid range is greater than `0` through `1`. Raise it if room noise qualifies too easily. |
-| `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required to qualify an input signal. Minimum `250`. |
+| `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required for microphone-only tools. Minimum `250`; Zoom uses at least three seconds to reject call-start noise. |
 | `recentVoiceSeconds` | `300` | Seconds spent in Recent Signal after the last qualifying input. A new signal restarts this duration. |
 | `voiceCooldownSeconds` | `300` | Seconds spent in Cooldown after Recent Signal ends. Afterward the state becomes Zoom Quiet or Available. |
 | `availableColor` | `#000000` | Output used when no communication context is active. Black turns the device off. |
@@ -254,9 +254,9 @@ Use the actual port and token if you changed them. Treat a custom token like a p
 1. Leave Zoom closed and confirm **Signal Sampling: Idle**.
 2. Start any app that actively receives microphone input, such as Zoom, Teams, Slack, FaceTime, a browser call, dictation, or recording software.
 3. Within one polling interval, expect **Other App Input: In Use** and **Signal Sampling: Active**. The macOS microphone privacy indicator is expected while sampling is active.
-4. Produce a non-silent input signal for at least 250 milliseconds. Expect **Input Signal: Detected** and solid red.
-5. While the communication context remains active, the light becomes orange after the recent-signal period and yellow after cooldown when Zoom is still active.
-6. Stop the microphone-using app. Expect **Signal Sampling: Idle** and the light to turn off once both Zoom and other-app input contexts have ended. macOS may briefly retain its privacy indicator after capture stops.
+4. For dictation or recording without Zoom, produce a non-silent input signal for at least 250 milliseconds. Expect **Input Signal: Detected** and solid red. In Zoom, continuous input must remain above the threshold for at least three seconds; the light stays yellow before then.
+5. Stop the microphone-using app. Expect **Signal Sampling: Idle** while the light remains red for the configured Recent Signal duration, then orange for Cooldown. The timeline continues without keeping LuxaforPresence's microphone open.
+6. After Cooldown expires, expect yellow if Zoom is still active or off otherwise. macOS may briefly retain its privacy indicator after capture stops.
 
 LuxaforPresence measures RMS input energy; it does not classify speech or inspect audio content. A very quiet room, hardware mute, application-level processing, or a threshold set too high can all appear silent.
 
@@ -264,12 +264,12 @@ LuxaforPresence measures RMS input energy; it does not classify speech or inspec
 
 | Default output | Meaning |
 | --- | --- |
-| Off | No active Zoom meeting or qualifying signal in an active microphone context |
+| Off | No active Zoom meeting and no qualifying signal in the Recent/Cooldown timeline |
 | Solid yellow | Zoom is active without a recent or cooling-down input signal |
 | Solid red | A qualifying non-silent input signal occurred within `recentVoiceSeconds` |
 | Solid orange | The recent-signal period ended and `voiceCooldownSeconds` is still running |
 
-The Recent Signal → Cooldown timeline continues while either Zoom or another application's active microphone input keeps the communication context active. When both end, the state becomes Available immediately. A new qualifying signal restarts Recent Signal. Every output color and both durations can be changed under **Settings…**.
+The Recent Signal → Cooldown timeline continues after Zoom or another application releases its microphone. Capture stops immediately, but the light remains red and then orange until both configured durations expire. It then becomes Zoom Quiet when Zoom is still active or Available otherwise. A new qualifying signal restarts Recent Signal. Every output color and both durations can be changed under **Settings…**.
 
 Manual choices take precedence over automatic detection and stop signal sampling:
 
@@ -282,7 +282,7 @@ Manual choices take precedence over automatic detection and stop signal sampling
 
 **Clear Recent Signal & Cooldown** forgets the last detected input signal. When Automatic is selected, the app reevaluates immediately; a manual override remains selected. It is useful after a false positive or when the light should leave Recent/Cooldown before their configured durations expire.
 
-The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.3**.
+The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.4**.
 
 ## Privacy and permissions
 
@@ -332,7 +332,7 @@ If the menu says **Microphone Permission: Denied — Open Privacy Settings**, op
 - Confirm the microphone-using app is actively receiving input, not merely open.
 - Return LuxaforPresence to **Automatic**; manual overrides intentionally stop sampling.
 - Stream diagnostics and look for `External input activity changed active=true source=coreAudioProcesses`.
-- If sampling is active but **Input Signal** remains quiet, lower `vadThreshold`; `0.001` is the bundled digital-silence-oriented default.
+- If sampling is active but **Input Signal** remains quiet, lower `vadThreshold`; `0.001` is the bundled digital-silence-oriented default. Zoom also requires three continuous seconds above the threshold, while microphone-only tools use the configured minimum.
 
 ### Zoom is active but the light stays off
 

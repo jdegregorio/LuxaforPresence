@@ -321,6 +321,9 @@ struct PresenceSettingsView: View {
                     value: $draft.vadMinimumActiveMilliseconds,
                     unit: "milliseconds"
                 )
+                Text("Microphone-only tools use this duration. Zoom requires at least three seconds of continuous signal before Recent turns red.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Output recovery") {
@@ -417,7 +420,7 @@ final class SettingsWindowController: NSWindowController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        return nil
     }
 }
 
