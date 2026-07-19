@@ -18,7 +18,6 @@ final class PresenceEngineTests: XCTestCase {
 
     func test_noCommunicationContext_returnsAvailableAndOff() {
         let harness = PresenceEngineHarness()
-        harness.voiceActivity.lastActivityDate = harness.currentDate.addingTimeInterval(-1)
         let engine = harness.makeEngine()
 
         tickAndWait(engine)
