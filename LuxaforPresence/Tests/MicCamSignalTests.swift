@@ -92,6 +92,34 @@ final class MicCamSignalTests: XCTestCase {
         )
     }
 
+    func test_coreAudioActivityReduction_reportsActiveApplicationBundleIdentifiers() {
+        let activities = [
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 456,
+                bundleIdentifier: "us.zoom.xos",
+                isRunningInput: true
+            ),
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 789,
+                bundleIdentifier: "com.apple.CoreSpeech",
+                isRunningInput: true
+            ),
+            CoreAudioInputProcessActivityProvider.ProcessActivity(
+                processIdentifier: 999,
+                bundleIdentifier: "com.example.IdleRecorder",
+                isRunningInput: false
+            ),
+        ]
+
+        let activity = CoreAudioInputProcessActivityProvider.microphoneActivity(
+            activities,
+            excluding: 123
+        )
+
+        XCTAssertTrue(activity.isActiveByAnotherApplication)
+        XCTAssertEqual(activity.activeBundleIdentifiers, ["us.zoom.xos"])
+    }
+
     func test_coreAudioActivityReduction_unknownBundleFailsOpen() {
         let activities = [
             CoreAudioInputProcessActivityProvider.ProcessActivity(
@@ -150,14 +178,18 @@ final class MicCamSignalTests: XCTestCase {
 }
 
 private final class FakeAudioInputProcessActivityProvider: AudioInputProcessActivityProviding {
-    private let result: Bool?
+    private let result: MicrophoneActivitySnapshot?
     private(set) var excludedProcessIdentifiers: [pid_t] = []
 
     init(result: Bool?) {
-        self.result = result
+        self.result = result.map {
+            MicrophoneActivitySnapshot(isActiveByAnotherApplication: $0)
+        }
     }
 
-    func isInputActive(excluding processIdentifier: pid_t) -> Bool? {
+    func microphoneActivity(
+        excluding processIdentifier: pid_t
+    ) -> MicrophoneActivitySnapshot? {
         excludedProcessIdentifiers.append(processIdentifier)
         return result
     }

@@ -183,7 +183,7 @@ The saved file is readable only by the current user. The complete default config
 | `localWebhookToken` | `luxafor` | Must match the Luxafor app's Incoming Webhook security token. |
 | `remoteWebhookUserId` | placeholder | Required only for `remote` transport. Find the ID in the Luxafor app's Webhook tab. Never commit a real ID. |
 | `pollInterval` | `2` seconds | How often Zoom and other processes' active microphone input are checked. Minimum `0.25`. |
-| `detectZoom` | `true` | Enables process-based Zoom detection. |
+| `detectZoom` | `true` | Enables Zoom detection from Zoom-owned microphone input, in-call power assertions, and legacy helper processes. |
 | `vadEnabled` | `true` | Enables local input-energy analysis while any other process has active microphone input. |
 | `vadThreshold` | `0.001` | RMS threshold separating digital silence from a real input signal. Valid range is greater than `0` through `1`. Raise it if room noise qualifies too easily. |
 | `vadMinimumActiveMilliseconds` | `250` | Consecutive above-threshold energy required for microphone-only tools. Minimum `250`; Zoom uses at least three seconds to reject call-start noise. |
@@ -282,13 +282,13 @@ Manual choices take precedence over automatic detection and stop signal sampling
 
 **Clear Recent Signal & Cooldown** forgets the last detected input signal. When Automatic is selected, the app reevaluates immediately; a manual override remains selected. It is useful after a false positive or when the light should leave Recent/Cooldown before their configured durations expire.
 
-The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.4**.
+The bottom of the menu shows the semantic version read from the running app, for example **Version: 1.9.5**.
 
 ## Privacy and permissions
 
 The packaged app requests only **Microphone** permission. Permission alone does not keep an audio stream open: `AVAudioEngine` starts only while Core Audio reports active input in another process, and it stops when that external use ends, a manual override is selected, the Mac sleeps, or the app quits. The app excludes its own audio process and Apple's background CoreSpeech voice trigger, which can remain active when no user-facing dictation client is listening, so neither can keep sampling active by itself.
 
-While active, LuxaforPresence calculates RMS energy from short in-memory buffers. It never records, stores, transmits, or transcribes audio, and it never logs individual audio samples. Zoom detection is process-based (`CptHost`) and does not require Accessibility, Calendar, Camera, browser automation, or Apple Events permissions.
+While active, LuxaforPresence calculates RMS energy from short in-memory buffers. It never records, stores, transmits, or transcribes audio, and it never logs individual audio samples. Zoom detection reads privacy-safe Core Audio process ownership and power assertions, with the legacy `CptHost` helper as a compatibility fallback; it does not require Accessibility, Calendar, Camera, browser automation, or Apple Events permissions.
 
 Use the packaged app for final permission testing. `swift run` is an unpackaged development process, so macOS may attribute microphone permission to the parent terminal instead of LuxaforPresence.
 

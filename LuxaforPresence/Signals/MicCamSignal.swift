@@ -7,7 +7,9 @@ import OSLog
 protocol AudioInputProcessActivityProviding {
     /// Returns `nil` when the installed macOS audio HAL does not expose process
     /// input activity and the caller should use its compatibility fallback.
-    func isInputActive(excluding processIdentifier: pid_t) -> Bool?
+    func microphoneActivity(
+        excluding processIdentifier: pid_t
+    ) -> MicrophoneActivitySnapshot?
 }
 
 /// Reads the Core Audio process list instead of inferring microphone ownership
@@ -39,7 +41,9 @@ struct CoreAudioInputProcessActivityProvider: AudioInputProcessActivityProviding
         "com.apple.CoreSpeech",
     ]
 
-    func isInputActive(excluding processIdentifier: pid_t) -> Bool? {
+    func microphoneActivity(
+        excluding processIdentifier: pid_t
+    ) -> MicrophoneActivitySnapshot? {
         guard let processObjects = processObjectIDs() else { return nil }
 
         var activities: [ProcessActivity] = []
@@ -57,9 +61,26 @@ struct CoreAudioInputProcessActivityProvider: AudioInputProcessActivityProviding
             )
         }
         guard processObjects.isEmpty || !activities.isEmpty else { return nil }
-        return Self.hasExternalInput(
+        return Self.microphoneActivity(
             activities,
             excluding: processIdentifier
+        )
+    }
+
+    static func microphoneActivity(
+        _ activities: [ProcessActivity],
+        excluding processIdentifier: pid_t
+    ) -> MicrophoneActivitySnapshot {
+        let activeApplications = activities.filter {
+            $0.processIdentifier != processIdentifier
+                && $0.isRunningInput
+                && !nonUserInputBundleIdentifiers.contains($0.bundleIdentifier ?? "")
+        }
+        return MicrophoneActivitySnapshot(
+            isActiveByAnotherApplication: !activeApplications.isEmpty,
+            activeBundleIdentifiers: Set(
+                activeApplications.compactMap(\.bundleIdentifier)
+            )
         )
     }
 
@@ -67,11 +88,10 @@ struct CoreAudioInputProcessActivityProvider: AudioInputProcessActivityProviding
         _ activities: [ProcessActivity],
         excluding processIdentifier: pid_t
     ) -> Bool {
-        activities.contains {
-            $0.processIdentifier != processIdentifier
-                && $0.isRunningInput
-                && !nonUserInputBundleIdentifiers.contains($0.bundleIdentifier ?? "")
-        }
+        microphoneActivity(
+            activities,
+            excluding: processIdentifier
+        ).isActiveByAnotherApplication
     }
 
     private func processObjectIDs() -> [AudioObjectID]? {
@@ -209,10 +229,17 @@ final class MicCamSignal: MicCamSignalProtocol {
     }
 
     func isMicrophoneInUseByAnotherApplication() -> Bool {
-        let processActivity = inputActivityProvider.isInputActive(
+        microphoneActivity().isActiveByAnotherApplication
+    }
+
+    func microphoneActivity() -> MicrophoneActivitySnapshot {
+        let processActivity = inputActivityProvider.microphoneActivity(
             excluding: processIdentifier
         )
-        let inUse = processActivity ?? legacyExternalUse()
+        let activity = processActivity ?? MicrophoneActivitySnapshot(
+            isActiveByAnotherApplication: legacyExternalUse()
+        )
+        let inUse = activity.isActiveByAnotherApplication
         let source = processActivity == nil ? "avFoundationFallback" : "coreAudioProcesses"
 
         lock.lock()
@@ -224,7 +251,7 @@ final class MicCamSignal: MicCamSignalProtocol {
                 "External input activity changed active=\(inUse, privacy: .public) source=\(source, privacy: .public)"
             )
         }
-        return inUse
+        return activity
     }
 
     private static func avFoundationExternalUse() -> Bool {

@@ -309,6 +309,63 @@ final class PresenceEngineTests: XCTestCase {
         XCTAssertEqual(harness.states, [.zoomQuiet])
     }
 
+    func test_mutedZoomStart_detectedFromOwnedInput_entersZoomQuietWithoutAvailable() {
+        let harness = PresenceEngineHarness()
+        harness.micCam.microphoneActive = true
+        harness.micCam.activeBundleIdentifiers = ["us.zoom.xos"]
+        let detector = ZoomMeetingDetector(
+            isProcessRunning: { _ in false },
+            hasActiveZoomPowerAssertion: { false }
+        )
+        let engine = harness.makeEngine(meetingDetector: detector)
+
+        tickAndWait(engine)
+
+        XCTAssertEqual(harness.states, [.zoomQuiet])
+        XCTAssertEqual(harness.outputs, [.solid(.yellow)])
+        XCTAssertEqual(
+            harness.voiceActivity.captureMinimumActiveDurations,
+            [PresenceEngine.minimumZoomSignalDuration]
+        )
+        XCTAssertEqual(harness.snapshots.last?.decisionPath, .zoomQuiet)
+    }
+
+    func test_zoomQuiet_talkingAndCooldownTimeline_returnsToZoomQuiet() {
+        let harness = PresenceEngineHarness { config in
+            config.recentVoiceSeconds = 5
+            config.voiceCooldownSeconds = 5
+        }
+        harness.micCam.microphoneActive = true
+        harness.micCam.activeBundleIdentifiers = ["us.zoom.caphost"]
+        let detector = ZoomMeetingDetector(
+            isProcessRunning: { _ in false },
+            hasActiveZoomPowerAssertion: { false }
+        )
+        let engine = harness.makeEngine(meetingDetector: detector)
+
+        tickAndWait(engine)
+        harness.voiceActivity.lastActivityDate = harness.currentDate
+        tickAndWait(engine)
+        harness.currentDate = harness.currentDate.addingTimeInterval(5)
+        tickAndWait(engine)
+        harness.currentDate = harness.currentDate.addingTimeInterval(5)
+        tickAndWait(engine)
+
+        XCTAssertEqual(
+            harness.states,
+            [.zoomQuiet, .voiceRecent, .voiceCooldown, .zoomQuiet]
+        )
+        XCTAssertEqual(
+            harness.outputs,
+            [
+                .solid(.yellow),
+                .solid(.red),
+                .solid(.orange),
+                .solid(.yellow),
+            ]
+        )
+    }
+
     func test_dictationMicrophone_usesConfiguredFastSignalQualification() {
         let harness = PresenceEngineHarness()
         harness.micCam.microphoneActive = true
@@ -986,11 +1043,19 @@ private final class PresenceEngineHarness {
 
 private final class FakeMicCamSignal: MicCamSignalProtocol {
     var microphoneActive = false
+    var activeBundleIdentifiers: Set<String>?
     private(set) var microphoneReadCount = 0
 
     func isMicrophoneInUseByAnotherApplication() -> Bool {
+        microphoneActivity().isActiveByAnotherApplication
+    }
+
+    func microphoneActivity() -> MicrophoneActivitySnapshot {
         microphoneReadCount += 1
-        return microphoneActive
+        return MicrophoneActivitySnapshot(
+            isActiveByAnotherApplication: microphoneActive,
+            activeBundleIdentifiers: activeBundleIdentifiers
+        )
     }
 }
 

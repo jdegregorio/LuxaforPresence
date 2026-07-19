@@ -21,4 +21,12 @@ final class MeetingDetector: MeetingDetectorProtocol {
     func isMeetingActive() -> Bool {
         detectors.contains { $0.isMeetingActive() }
     }
+
+    func isMeetingActive(
+        microphoneActivity: MicrophoneActivitySnapshot
+    ) -> Bool {
+        detectors.contains {
+            $0.isMeetingActive(microphoneActivity: microphoneActivity)
+        }
+    }
 }
