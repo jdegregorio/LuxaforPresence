@@ -18,6 +18,7 @@ let package = Package(
                 .process("Resources")
             ],
             linkerSettings: [
+                .linkedFramework("IOKit"),
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",
                     "-Xlinker", "__TEXT",

@@ -12,6 +12,8 @@ All notable changes to LuxaforPresence will be documented here.
 - Require three seconds of continuous non-silent input before a new Zoom session turns red, while keeping microphone-only dictation and recording tools responsive to the configured 250 ms minimum.
 - Retire the prior audio engine away from the main thread when settings are saved, fence its callbacks, and start the replacement in order so Core Audio teardown cannot freeze the settings UI.
 - Package the signal-timeline, Zoom-qualification, and settings-lifecycle fixes as version `1.9.4`.
+- Detect current Zoom calls from Zoom-owned microphone input and in-call power assertions, while preserving the legacy helper fallback, so muted call startup enters Zoom Quiet without a transient Available or false Recent Signal state.
+- Package the Zoom state-transition fix as version `1.9.5`.
 
 ## [1.9.1] – 2026-07-18
 

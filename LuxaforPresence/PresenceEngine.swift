@@ -654,9 +654,12 @@ final class PresenceEngine {
     }
 
     private func evaluateSignals() -> PresenceSnapshot {
+        let microphoneActivity = micCam.microphoneActivity()
+        let microphoneActive = microphoneActivity.isActiveByAnotherApplication
         logger.debug("Evaluating Zoom meeting detector")
-        let zoomActive = meetingDetector.isMeetingActive()
-        let microphoneActive = micCam.isMicrophoneInUseByAnotherApplication()
+        let zoomActive = meetingDetector.isMeetingActive(
+            microphoneActivity: microphoneActivity
+        )
         if config.vadEnabled {
             let minimumActiveDuration = zoomActive
                 ? max(
