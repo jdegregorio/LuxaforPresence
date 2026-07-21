@@ -9,7 +9,8 @@ Source for the macOS menu bar app lives under `LuxaforPresence/`. Key folders: `
 - `swift run` – launches the debug build; use during iterative development to see menu bar changes instantly.
 - `swift run -c release` – produces an optimized binary for field testing with the real Luxafor hardware.
 - `swift test` – executes `LuxaforPresenceTests`, including Luxafor client fakes and `PresenceEngine` scenarios.
-- `./scripts/package-dmg.sh` – builds (release by default), creates `LuxaforPresence.app`, and emits `dist/LuxaforPresence.dmg` for distribution; accepts `-c debug|release` and `-n VolumeName`.
+- `./scripts/package-dmg.sh` – creates an ad-hoc-signed app and DMG for local development only; accepts `-c debug|release` and `-n VolumeName`.
+- `./scripts/release-dmg.sh` – with the credentials documented in `DIST.md`, Developer ID-signs, notarizes, staples, and verifies the app and DMG for distribution.
 
 ## Development SDLC
 
@@ -34,7 +35,7 @@ The two revisions must match before the feature branch is created. Do not develo
 - Translate the request or PRD into observable behavior and identify affected state transitions, signals, transport calls, permissions, configuration, documentation, and packaging before editing.
 - Prefer the smallest clean implementation that preserves module boundaries. Add deterministic unit tests for every non-trivial branch or regression and use fakes for audio, Luxafor, calendar, and process behavior.
 - Keep `README.md`, the sample config, menu copy, and `DIST.md` synchronized whenever setup, permissions, configuration, or distribution behavior changes.
-- Use semantic versions only: patch for a backward-compatible fix, minor for a backward-compatible feature, and major for a breaking change. Keep `CFBundleShortVersionString` and `CFBundleVersion` aligned to the same `MAJOR.MINOR.PATCH` value; do not add informal “build N” suffixes. A successful `main` build automatically publishes a missing release for the current version, so merging a version bump authorizes an ad-hoc GitHub Release. Documentation- or workflow-only changes do not require an app version bump.
+- Use semantic versions only: patch for a backward-compatible fix, minor for a backward-compatible feature, and major for a breaking change. Keep `CFBundleShortVersionString` and `CFBundleVersion` aligned to the same `MAJOR.MINOR.PATCH` value; do not add informal “build N” suffixes. A successful `main` build automatically publishes a missing trusted release for the current version, so merging a version bump authorizes Developer ID signing and Apple notarization. Documentation- or workflow-only changes do not require an app version bump.
 - Never hardcode or commit local tokens, user IDs, signing credentials, personal paths, or captured private data.
 
 ### Local verification ladder
@@ -79,13 +80,13 @@ For a set of related changes, use separate child feature branches/PRs when they 
 
 Always rebuild distribution output from the exact merged `main` commit; do not reuse a pre-merge DMG. `dist/` is generated output and must remain uncommitted. Quit the prior app before replacing `/Applications/LuxaforPresence.app`, launch that installed copy, and verify the displayed version, bundle metadata, signature, executable checksum, and expected process before field testing. Launch-at-login must be tested from `/Applications` or `~/Applications`, not from a mounted DMG or App Translocation path.
 
-`scripts/package-dmg.sh` creates the ad-hoc-signed artifact used for local testing and current personal GitHub Releases. These releases are intentionally not Developer ID-signed or notarized: document the Gatekeeper, permission, and code-identity limitations and never describe them as Apple-trusted or suitable for frictionless public distribution. After a successful `main` build, the workflow publishes `LuxaforPresence.dmg` and its SHA-256 file when the current semantic version has no complete release; no signing secrets are required.
+`scripts/package-dmg.sh` creates an ad-hoc-signed artifact for local testing only. Never publish it. GitHub Releases must be built with `scripts/release-dmg.sh`, an Apple-issued Developer ID Application certificate, hardened runtime, a secure timestamp, Apple notarization, ticket stapling, and successful `codesign`, `stapler`, `spctl`, and DMG verification.
 
-Future broader distribution must follow the trusted-release checklist in `DIST.md`: obtain Apple Developer Program membership and a Developer ID Application certificate, provision notarization credentials as protected GitHub secrets, replace the automated ad-hoc packaging step with `scripts/release-dmg.sh`, and require hardened signing, notarization, stapling, and Gatekeeper verification before publication.
+The `publish_release` job uses secrets from the protected GitHub `release` environment and must fail rather than fall back when a required credential or trust check is missing. Configure and rotate those secrets only as described in `DIST.md`; never expose the `.p12`, private key, certificate password, Apple Account email, or app-specific password in Git, logs, issues, or PRs. Existing ad-hoc release assets must be replaced through the explicit workflow-dispatch migration option before being described as trusted.
 
 ### Completion record
 
-The handoff for each change should state the merged PR and commit, local and CI checks, version (if changed), release URL and SHA-256 (if published), local artifact path and SHA-256 (if built), install/running status (if requested), and any remaining human-only hardware check. A change is complete only when the PR is merged, post-merge CI is green, any release required for the current version is published, and the worktree is clean and synchronized with `origin/main`. Trusted Apple distribution remains a separate future gate until the prerequisites in `DIST.md` are implemented.
+The handoff for each change should state the merged PR and commit, local and CI checks, version (if changed), release URL and SHA-256 (if published), local artifact path and SHA-256 (if built), install/running status (if requested), and any remaining human-only hardware check. A change is complete only when the PR is merged, post-merge CI is green, any required Developer ID-signed release is published and verified, and the worktree is clean and synchronized with `origin/main`. If Apple membership or protected release credentials are unavailable, do not publish an ad-hoc substitute; complete all independent work and report the exact credential or physical validation gate.
 
 ## Coding Style & Naming Conventions
 Follow Swift API Design Guidelines: UpperCamelCase for types (`PresenceEngine`), lowerCamelCase for methods/properties (`updateState()`), and enums for state machines. Prefer 4-space indentation, trailing commas in multiline collections, and mark protocol conformances in dedicated `extension` blocks. When adding files, keep filenames aligned with the primary type (e.g., `FooSignal.swift`). Run Xcode's built-in formatter before committing; extra tooling (SwiftFormat/SwiftLint) is currently out of scope.

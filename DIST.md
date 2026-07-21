@@ -1,60 +1,133 @@
 # Shipping LuxaforPresence
 
-## Current personal releases
+GitHub Releases must contain only Developer ID-signed, hardened, notarized, stapled, and Gatekeeper-verified DMGs. `scripts/package-dmg.sh` remains an ad-hoc local-development path and must never be published.
 
-LuxaforPresence currently publishes ad-hoc-signed, non-notarized DMGs for personal use. After every successful `main` build, GitHub Actions reads the semantic version from `LuxaforPresence/Info.plist` and checks for a matching `vMAJOR.MINOR.PATCH` GitHub Release. If that release does not already contain `LuxaforPresence.dmg`, the workflow:
+## What this solves
 
-1. Builds the exact `main` revision in release mode.
-2. Creates an ad-hoc-signed app with the audio-input entitlement.
-3. Packages and verifies `LuxaforPresence.dmg`.
-4. Generates `LuxaforPresence.dmg.sha256`.
-5. Creates the version tag and GitHub Release, or repairs a release whose assets are missing.
+Apple's standard **Allow applications from: App Store & Known Developers** policy accepts software distributed outside the Mac App Store when it has an Apple-issued Developer ID signature and an Apple notarization ticket. The release workflow implements that path; notarization is an automated malware and code-signing check, not Mac App Store review.
 
-The latest published DMG is always available at:
+An employer can apply stricter MDM, endpoint-security, application-allowlist, Privacy Preferences Policy Control, or network rules. In that case, a valid Developer ID and notarization ticket are necessary but may not be sufficient. Give IT the following values and ask whether they must explicitly approve them:
+
+- Bundle identifier: `com.jdegregorio.LuxaforPresence`
+- Developer Team ID: the value stored as `NOTARY_TEAM_ID`
+- Signing identity: `Developer ID Application: <member or organization name> (<TEAM_ID>)`
+- Required privacy access: Microphone; the user must also be allowed to run the official Luxafor app and connect to its loopback webhook
+
+Apple documents the [Gatekeeper checks](https://support.apple.com/guide/security/sec5599b66df/web) and the [Developer ID plus notarization requirement](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+
+## One-time Apple setup
+
+### 1. Enroll
+
+Join the [Apple Developer Program](https://developer.apple.com/programs/enroll/) as an individual or organization. A free Apple developer account cannot issue the required distribution certificate. Apple currently requires the Account Holder to create a Developer ID certificate.
+
+### 2. Create the signing certificate
+
+1. On a trusted Mac, open **Keychain Access → Certificate Assistant → Request a Certificate From a Certificate Authority**.
+2. Enter the Apple Account email and a descriptive common name, leave the CA email blank, select **Saved to disk**, and save the `.certSigningRequest`. Apple provides the same steps in [Create a certificate signing request](https://developer.apple.com/help/account/certificates/create-a-certificate-signing-request).
+3. Open [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/certificates/list), add a certificate, select **Developer ID → Developer ID Application**, upload the CSR, and download the `.cer`. Do not choose **Mac App Distribution**, **Apple Distribution**, or **Developer ID Installer**. See Apple's [Developer ID certificate instructions](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/).
+4. Double-click the `.cer` to add it to the same keychain that contains the CSR private key.
+5. In **Keychain Access → My Certificates**, expand the new `Developer ID Application: ...` entry and confirm a private key appears below it.
+6. Export that identity as a password-protected `.p12`. The export must include both the certificate and private key. Keep the `.p12` and its password outside the repository.
+7. Confirm the identity is valid:
+
+   ```bash
+   security find-identity -v -p codesigning
+   ```
+
+### 3. Create notarization credentials
+
+1. Record the 10-character Team ID shown in Apple Developer membership details.
+2. Ensure the Apple Account used for notarization belongs to that developer team and has two-factor authentication enabled.
+3. At [account.apple.com](https://account.apple.com/), open **Sign-In & Security → App-Specific Passwords** and create one named `LuxaforPresence GitHub Actions`. Apple documents this in [Sign in using app-specific passwords](https://support.apple.com/102654).
+
+Changing the main Apple Account password revokes its app-specific passwords, so `NOTARY_APP_PASSWORD` must be replaced afterward.
+
+## Configure GitHub
+
+Open the repository's [environment settings](https://github.com/jdegregorio/LuxaforPresence/settings/environments). The `release` environment is already created and limited to the `main` branch. Add these **environment secrets**:
+
+| Secret | Value |
+| --- | --- |
+| `BUILD_CERTIFICATE_BASE64` | Base64 text for the exported Developer ID `.p12` |
+| `BUILD_CERTIFICATE_PASSWORD` | Password chosen while exporting the `.p12` |
+| `NOTARY_APPLE_ID` | Apple Account email used for notarization |
+| `NOTARY_TEAM_ID` | 10-character Apple Developer Team ID |
+| `NOTARY_APP_PASSWORD` | App-specific password created for CI |
+
+On macOS, copy the certificate value without writing another plaintext file:
+
+```bash
+base64 -i /secure/path/DeveloperIDApplication.p12 | tr -d '\n' | pbcopy
+```
+
+Paste the clipboard into `BUILD_CERTIFICATE_BASE64`. Do not add the `.p12`, its decoded contents, or any password to Git, an Actions variable, workflow output, issue, or pull request. The workflow generates a random temporary keychain password, derives the signing identity from the imported certificate, and deletes the temporary certificate and keychain before publication.
+
+A required reviewer is also recommended; when enabled, an authorized reviewer must approve each new or replacement release before the signing secrets become available. GitHub explains environment-scoped secrets and protection rules in [Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
+
+## Publish or migrate a release
+
+After every successful `main` build, GitHub Actions reads the semantic version from `LuxaforPresence/Info.plist`. If `vMAJOR.MINOR.PATCH` does not contain both `LuxaforPresence.dmg` and its checksum, the protected `release` job builds and publishes them. Missing credentials fail the trusted-release job; the workflow never falls back to an ad-hoc artifact.
+
+Existing releases created before this workflow remain ad-hoc until replaced. To migrate the current release after the five secrets are configured:
+
+1. Open **Actions → Build & Package → Run workflow**.
+2. Select the `main` branch.
+3. Enable **Replace existing current-version assets with a trusted build**.
+4. Run the workflow and approve the `release` environment if it has a reviewer gate.
+5. Require `build_and_test`, `release_state`, and `publish_release` to succeed before downloading the replacement DMG.
+
+For a new application release, update `CFBundleShortVersionString` and `CFBundleVersion` to the same `MAJOR.MINOR.PATCH` value and merge normally. A missing current-version release publishes automatically after tests pass.
+
+The workflow:
+
+1. Imports the `.p12` into an ephemeral keychain and confirms it contains exactly one valid Developer ID Application identity.
+2. Stores and validates the notary credentials in that keychain.
+3. Signs the app with the audio-input entitlement, hardened runtime, and secure timestamp.
+4. Notarizes and staples the app.
+5. Creates and Developer ID-signs the DMG, then notarizes and staples it.
+6. Validates signatures, hardened runtime, Team ID, entitlements, notarization tickets, Gatekeeper assessments, DMG integrity, and version metadata.
+7. Generates `LuxaforPresence.dmg.sha256`, deletes temporary credentials, and only then creates or updates the GitHub Release.
+
+The latest artifact URL remains:
 
 ```text
 https://github.com/jdegregorio/LuxaforPresence/releases/latest/download/LuxaforPresence.dmg
 ```
 
-To publish a new application version, update both `CFBundleShortVersionString` and `CFBundleVersion` to the same `MAJOR.MINOR.PATCH` value. Merging that change to `main` authorizes publication after the normal build and test job succeeds. Documentation- and workflow-only changes do not require a version bump; if the current version already has a complete release, the publication job exits without rebuilding it.
+## Local trusted release
 
-For recovery or to republish a missing current-version asset, run the **Build & Package** workflow on `main` with **Publish the current main version if its DMG is missing** enabled.
+With the Developer ID identity installed in the active keychain, store the notarization password using an interactive prompt:
 
-## Ad-hoc distribution limitations
+```bash
+xcrun notarytool store-credentials LuxaforPresenceNotary \
+  --apple-id "appleid@example.com" \
+  --team-id TEAMID
+```
 
-These GitHub Releases are not Developer ID-signed or notarized by Apple. Treat them like local development builds:
+Then build the release:
 
-- macOS may block the first launch. For a DMG built from this repository that you trust, Control-click the app and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway** after the blocked launch.
-- Gatekeeper cannot verify an identified developer or an Apple notarization ticket.
-- A rebuilt app has a different ad-hoc code identity, so macOS may request Microphone permission again after an upgrade.
-- Automatic launch-at-login registration may be unavailable. Add `/Applications/LuxaforPresence.app` manually under **System Settings → General → Login Items** when necessary.
-- The release is suitable for the repository owner's personal use, not frictionless public distribution. Do not instruct other users to bypass Gatekeeper for artifacts they do not independently trust.
+```bash
+DEVELOPER_ID_APPLICATION="Developer ID Application: YOUR NAME (TEAMID)" \
+NOTARY_PROFILE="LuxaforPresenceNotary" \
+./scripts/release-dmg.sh -c release -n LuxaforPresence
+```
 
-The DMG includes an Applications shortcut. Copy the app to `/Applications` or `~/Applications` before testing launch at login; do not test it from the mounted image or an App Translocation path.
+Do not rerun `package-dmg.sh` afterward; it reconstructs the app with an ad-hoc signature.
 
-## Future trusted distribution
+## Verify before installing
 
-If LuxaforPresence is distributed more broadly, replace the ad-hoc publication step with the existing `scripts/release-dmg.sh` trusted-release path. An official release requires all of the following:
+Keep the DMG and checksum in the same directory, then run:
 
-1. Active Apple Developer Program membership.
-2. A `Developer ID Application` certificate and private key exported as a password-protected `.p12`.
-3. Apple notarization credentials, currently an Apple ID, team ID, and app-specific password usable by `notarytool`.
-4. GitHub Actions secrets stored in a release environment:
-   - `BUILD_CERTIFICATE_BASE64`
-   - `BUILD_CERTIFICATE_PASSWORD`
-   - `KEYCHAIN_PASSWORD`
-   - `DEVELOPER_ID_APPLICATION`
-   - `NOTARY_APPLE_ID`
-   - `NOTARY_TEAM_ID`
-   - `NOTARY_APP_PASSWORD`
-5. A workflow that imports the certificate into a temporary keychain, creates the `notarytool` profile, and calls:
+```bash
+shasum -a 256 -c LuxaforPresence.dmg.sha256
+codesign --verify --verbose=2 LuxaforPresence.dmg
+xcrun stapler validate LuxaforPresence.dmg
+spctl --assess \
+  --type open \
+  --context context:primary-signature \
+  --verbose=2 \
+  LuxaforPresence.dmg
+```
 
-   ```bash
-   DEVELOPER_ID_APPLICATION="Developer ID Application: YOUR NAME (TEAMID)" \
-   NOTARY_PROFILE="LuxaforPresence-CI" \
-   ./scripts/release-dmg.sh -c release -n LuxaforPresence
-   ```
-
-6. Successful verification of the app and DMG with `codesign`, `stapler`, and `spctl` before the GitHub Release is published.
-
-That script signs with hardened runtime and the microphone entitlement, notarizes and staples both the app and DMG, and performs the Gatekeeper assessments. When trusted distribution is enabled, update this document, the README warning, the workflow release notes, and `AGENTS.md` together; never silently present an ad-hoc artifact as an identified-developer release.
+Copy the app to `/Applications`, eject the DMG, and launch the installed copy. Do not bypass Gatekeeper. If the signed and notarized app is still blocked on the work Mac, capture the `spctl` result and ask IT to approve the Team ID and bundle identifier above; that is an organization policy issue rather than a signing workaround.
