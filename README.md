@@ -95,11 +95,11 @@ LuxaforPresence is a menu-bar-only app. It does not open a normal window or appe
 
 The drag-to-Applications window appears only when you open the `.dmg` file, normally from **Downloads**. Clicking `LuxaforPresence.app` in Applications starts the already-installed menu-bar app; it does not show the installer again.
 
-### Ad-hoc release warning
+### Release trust
 
-Current GitHub Releases and locally packaged DMGs are ad-hoc signed and are not notarized by Apple. macOS may block the first launch. For a build from this repository that you trust, Control-click the app in Finder and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway** after the blocked launch. Do not bypass Gatekeeper for an artifact you do not trust. See [DIST.md](DIST.md) for the complete limitations and the requirements for a future Developer ID-signed release.
+The current release workflow publishes only Developer ID-signed, hardened, notarized, and stapled DMGs; it fails rather than falling back to ad-hoc signing. Releases made before that workflow was enabled remain ad-hoc until their assets are explicitly replaced. On a managed Mac, use a release only when its notes identify it as Developer ID-signed and notarized. A company MDM or application allowlist can still require IT to approve the developer Team ID and `com.jdegregorio.LuxaforPresence` bundle identifier. See [DIST.md](DIST.md) for credential setup, migration, and verification.
 
-Replacing an ad-hoc-signed development build also changes its code identity, so macOS may ask for Microphone approval again even when an older LuxaforPresence entry still appears enabled. The menu reports **Microphone Permission: Waiting for Approval** until the current build is approved. This repeat prompt does not occur across properly Developer ID-signed releases from the same developer.
+Replacing an older ad-hoc build with the first Developer ID-signed build changes its code identity, so macOS may ask for Microphone approval once more even when an older LuxaforPresence entry still appears enabled. The menu reports **Microphone Permission: Waiting for Approval** until the current build is approved. Later releases signed by the same Developer ID preserve a stable signing identity.
 
 ### Approve permissions and launch at login
 
@@ -386,13 +386,13 @@ For restricted build environments with unwritable home-directory caches:
 CLANG_MODULE_CACHE_PATH=$PWD/.cache swift build --disable-sandbox
 ```
 
-Create the same ad-hoc-signed app and DMG used by the current personal release workflow:
+Create an ad-hoc-signed app and DMG for local development:
 
 ```bash
 ./scripts/package-dmg.sh -c release -n LuxaforPresence
 ```
 
-Outputs are written under `dist/`. The packaging script includes the microphone entitlement but does not provide an identified-developer signature or Apple notarization. Versioned builds merged to `main` publish this DMG and its SHA-256 file on GitHub automatically. See [DIST.md](DIST.md) for the current release behavior, its limitations, and the future trusted-distribution checklist.
+Outputs are written under `dist/`. `package-dmg.sh` includes the microphone entitlement but does not provide an identified-developer signature or Apple notarization, and its output must not be published. GitHub Releases use `release-dmg.sh` with protected signing and notarization credentials. See [DIST.md](DIST.md) for the complete trusted-release setup and procedure.
 
 ## License
 

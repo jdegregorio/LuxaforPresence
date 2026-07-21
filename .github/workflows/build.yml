@@ -10,7 +10,12 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: Publish the current main version if its DMG is missing
+        description: Publish the current main version if trusted assets are missing
+        required: false
+        default: false
+        type: boolean
+      replace_release_assets:
+        description: Replace existing current-version assets with a trusted build
         required: false
         default: false
         type: boolean
@@ -108,23 +113,27 @@ jobs:
         env:
           CLANG_MODULE_CACHE_PATH: ${{ env.CLANG_MODULE_CACHE_PATH }}
 
-  publish_release:
+  release_state:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release)
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+        (inputs.publish_release || inputs.replace_release_assets))
     needs: build_and_test
-    permissions:
-      contents: write
-    runs-on: macos-26
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.release_state.outputs.required }}
+      release_exists: ${{ steps.release_state.outputs.release_exists }}
+      tag_exists: ${{ steps.release_state.outputs.tag_exists }}
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: v${{ needs.build_and_test.outputs.app_version }}
+      REPLACE_RELEASE_ASSETS: ${{ github.event_name == 'workflow_dispatch' && inputs.replace_release_assets }}
     steps:
       - name: Check release state
         id: release_state
         run: |
-          RELEASE_JSON="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,isDraft 2>/dev/null || true)"
-          if [[ -n "$RELEASE_JSON" ]] && jq -e '
+          RELEASE_JSON="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets 2>/dev/null || true)"
+          if [[ "$REPLACE_RELEASE_ASSETS" != "true" ]] && [[ -n "$RELEASE_JSON" ]] && jq -e '
             ([.assets[].name] | index("LuxaforPresence.dmg")) and
             ([.assets[].name] | index("LuxaforPresence.dmg.sha256"))
           ' <<<"$RELEASE_JSON" >/dev/null; then
@@ -136,33 +145,51 @@ jobs:
           echo "required=true" >> "$GITHUB_OUTPUT"
           if [[ -n "$RELEASE_JSON" ]]; then
             echo "release_exists=true" >> "$GITHUB_OUTPUT"
-            if jq -e '.isDraft' <<<"$RELEASE_JSON" >/dev/null; then
-              echo "release_is_draft=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "release_is_draft=false" >> "$GITHUB_OUTPUT"
-            fi
-            echo "checkout_ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           elif git ls-remote --exit-code --tags \
             "https://github.com/$GITHUB_REPOSITORY.git" \
             "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
             echo "release_exists=false" >> "$GITHUB_OUTPUT"
             echo "tag_exists=true" >> "$GITHUB_OUTPUT"
-            echo "checkout_ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           else
             echo "release_exists=false" >> "$GITHUB_OUTPUT"
             echo "tag_exists=false" >> "$GITHUB_OUTPUT"
-            echo "checkout_ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           fi
 
+  publish_release:
+    if: needs.release_state.outputs.required == 'true'
+    needs:
+      - build_and_test
+      - release_state
+    permissions:
+      contents: write
+      deployments: write
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: release
+    env:
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      BUILD_CERTIFICATE_PASSWORD: ${{ secrets.BUILD_CERTIFICATE_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+      NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+      NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+      NOTARY_PROFILE: LuxaforPresence-CI
+      NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+      RELEASE_TAG: v${{ needs.build_and_test.outputs.app_version }}
+    steps:
+      - name: Require trusted-release credentials
+        run: |
+          : "${BUILD_CERTIFICATE_BASE64:?Missing release environment secret BUILD_CERTIFICATE_BASE64}"
+          : "${BUILD_CERTIFICATE_PASSWORD:?Missing release environment secret BUILD_CERTIFICATE_PASSWORD}"
+          : "${NOTARY_APPLE_ID:?Missing release environment secret NOTARY_APPLE_ID}"
+          : "${NOTARY_TEAM_ID:?Missing release environment secret NOTARY_TEAM_ID}"
+          : "${NOTARY_APP_PASSWORD:?Missing release environment secret NOTARY_APP_PASSWORD}"
+
       - name: Checkout
-        if: steps.release_state.outputs.required == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ steps.release_state.outputs.checkout_ref }}
           submodules: true
 
       - name: Cache build artifacts
-        if: steps.release_state.outputs.required == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -172,59 +199,141 @@ jobs:
           restore-keys: ${{ runner.os }}-swift-
 
       - name: Select Xcode
-        if: steps.release_state.outputs.required == 'true'
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: "26.1"
 
       - name: Set build env
-        if: steps.release_state.outputs.required == 'true'
         run: echo "CLANG_MODULE_CACHE_PATH=$RUNNER_TEMP/clang-module-cache" >> "$GITHUB_ENV"
 
-      - name: Build and package ad-hoc DMG
-        if: steps.release_state.outputs.required == 'true'
-        run: ./scripts/package-dmg.sh -c release -n LuxaforPresence
+      - name: Import Developer ID certificate
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/release-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          ORIGINAL_DEFAULT_KEYCHAIN="$(security default-keychain -d user | sed -e 's/^[[:space:]]*"//' -e 's/"[[:space:]]*$//')"
+
+          echo "ORIGINAL_DEFAULT_KEYCHAIN=$ORIGINAL_DEFAULT_KEYCHAIN" >> "$GITHUB_ENV"
+          echo "RELEASE_CERTIFICATE_PATH=$CERTIFICATE_PATH" >> "$GITHUB_ENV"
+          echo "RELEASE_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          chmod 600 "$CERTIFICATE_PATH"
+          test -s "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$BUILD_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "$ORIGINAL_DEFAULT_KEYCHAIN"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+          IDENTITY_COUNT="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -c '"Developer ID Application:' || true)"
+          if [[ "$IDENTITY_COUNT" != "1" ]]; then
+            echo "Expected exactly one valid Developer ID Application identity in the .p12; found $IDENTITY_COUNT." >&2
+            exit 1
+          fi
+          DEVELOPER_ID_APPLICATION="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/"Developer ID Application:/{print $2; exit}')"
+
+          echo "DEVELOPER_ID_APPLICATION=$DEVELOPER_ID_APPLICATION" >> "$GITHUB_ENV"
+          echo "SIGNING_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "NOTARY_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure notarization credentials
+        run: |
+          xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --team-id "$NOTARY_TEAM_ID" \
+            --password "$NOTARY_APP_PASSWORD" \
+            --keychain "$RELEASE_KEYCHAIN_PATH"
+
+      - name: Sign, notarize, and package DMG
+        run: ./scripts/release-dmg.sh -c release -n LuxaforPresence
         env:
           CLANG_MODULE_CACHE_PATH: ${{ env.CLANG_MODULE_CACHE_PATH }}
 
       - name: Verify release artifact
-        if: steps.release_state.outputs.required == 'true'
         run: |
           INFO_PLIST=dist/LuxaforPresence.app/Contents/Info.plist
           test "$(plutil -extract CFBundleShortVersionString raw -o - "$INFO_PLIST")" = "${RELEASE_TAG#v}"
           test "$(plutil -extract CFBundleVersion raw -o - "$INFO_PLIST")" = "${RELEASE_TAG#v}"
           codesign --verify --deep --strict --verbose=2 dist/LuxaforPresence.app
-          codesign -d --verbose=4 dist/LuxaforPresence.app 2>&1 | grep -q '^Signature=adhoc$'
+          APP_SIGNING_DETAILS="$(codesign --display --verbose=4 dist/LuxaforPresence.app 2>&1)"
+          grep -q '^Authority=Developer ID Application:' <<<"$APP_SIGNING_DETAILS"
+          grep -Eq '^CodeDirectory .*flags=.*runtime' <<<"$APP_SIGNING_DETAILS"
+          test "$(awk -F= '/^TeamIdentifier=/{print $2}' <<<"$APP_SIGNING_DETAILS")" = "$NOTARY_TEAM_ID"
+          ENTITLEMENTS_OUTPUT="$(codesign -d --entitlements - dist/LuxaforPresence.app 2>&1)"
+          grep -q 'com.apple.security.device.audio-input' <<<"$ENTITLEMENTS_OUTPUT"
+          xcrun stapler validate dist/LuxaforPresence.app
+          xcrun stapler validate dist/LuxaforPresence.dmg
+          codesign --verify --verbose=2 dist/LuxaforPresence.dmg
+          codesign --display --verbose=4 dist/LuxaforPresence.dmg 2>&1 | grep -q '^Authority=Developer ID Application:'
           hdiutil verify dist/LuxaforPresence.dmg
           (cd dist && shasum -a 256 LuxaforPresence.dmg > LuxaforPresence.dmg.sha256)
 
-      - name: Publish GitHub release
-        if: steps.release_state.outputs.required == 'true'
-        env:
-          RELEASE_EXISTS: ${{ steps.release_state.outputs.release_exists }}
-          RELEASE_IS_DRAFT: ${{ steps.release_state.outputs.release_is_draft }}
-          TAG_EXISTS: ${{ steps.release_state.outputs.tag_exists }}
+      - name: Clean up signing credentials
+        if: always()
         run: |
-          RELEASE_NOTES="This DMG is ad-hoc signed and is intended for personal use. macOS may require Control-click → Open or approval in System Settings → Privacy & Security. See DIST.md for limitations and the future trusted-release requirements."
+          if [[ -n "${ORIGINAL_DEFAULT_KEYCHAIN:-}" ]]; then
+            security default-keychain -d user -s "$ORIGINAL_DEFAULT_KEYCHAIN" || true
+            security list-keychains -d user -s "$ORIGINAL_DEFAULT_KEYCHAIN" || true
+          fi
+          if [[ -n "${RELEASE_KEYCHAIN_PATH:-}" && -f "$RELEASE_KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$RELEASE_KEYCHAIN_PATH" || true
+          fi
+          if [[ -n "${RELEASE_CERTIFICATE_PATH:-}" && -f "$RELEASE_CERTIFICATE_PATH" ]]; then
+            rm -f "$RELEASE_CERTIFICATE_PATH"
+          fi
+
+      - name: Publish GitHub release
+        env:
+          RELEASE_EXISTS: ${{ needs.release_state.outputs.release_exists }}
+          TAG_EXISTS: ${{ needs.release_state.outputs.tag_exists }}
+        run: |
+          TRUSTED_RELEASE_MARKER='<!-- trusted-release -->'
+          TRUSTED_RELEASE_NOTICE="$TRUSTED_RELEASE_MARKER"$'\n'"LuxaforPresence.dmg is signed with an Apple-issued Developer ID Application certificate, uses the hardened runtime, is notarized by Apple, and has its notarization ticket stapled. Gatekeeper verification passed before publication. Company-managed Macs can still require a separate IT allowlist. Verify the accompanying SHA-256 file after downloading."$'\n''<!-- /trusted-release -->'
           if [[ "$RELEASE_EXISTS" == "true" ]]; then
             gh release upload "$RELEASE_TAG" \
               dist/LuxaforPresence.dmg \
               dist/LuxaforPresence.dmg.sha256 \
               --clobber \
               --repo "$GITHUB_REPOSITORY"
-            if [[ "$RELEASE_IS_DRAFT" == "true" ]]; then
-              gh release edit "$RELEASE_TAG" \
-                --draft=false \
-                --latest \
-                --repo "$GITHUB_REPOSITORY"
+
+            CURRENT_NOTES="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+            if [[ "$CURRENT_NOTES" == *"$TRUSTED_RELEASE_MARKER"* ]]; then
+              UPDATED_NOTES="$CURRENT_NOTES"
+            else
+              OLD_RELEASE_NOTICE="This DMG is ad-hoc signed and is intended for personal use. macOS may require Control-click → Open or approval in System Settings → Privacy & Security. See DIST.md for limitations and the future trusted-release requirements."
+              CURRENT_NOTES="${CURRENT_NOTES#"$OLD_RELEASE_NOTICE"}"
+              while [[ "$CURRENT_NOTES" == $'\n'* ]]; do
+                CURRENT_NOTES="${CURRENT_NOTES#$'\n'}"
+              done
+              UPDATED_NOTES="$TRUSTED_RELEASE_NOTICE"
+              if [[ -n "$CURRENT_NOTES" ]]; then
+                UPDATED_NOTES+=$'\n\n'"$CURRENT_NOTES"
+              fi
             fi
+            gh release edit "$RELEASE_TAG" \
+              --draft=false \
+              --latest \
+              --notes "$UPDATED_NOTES" \
+              --repo "$GITHUB_REPOSITORY"
           elif [[ "$TAG_EXISTS" == "true" ]]; then
             gh release create "$RELEASE_TAG" \
               dist/LuxaforPresence.dmg \
               dist/LuxaforPresence.dmg.sha256 \
               --verify-tag \
               --generate-notes \
-              --notes "$RELEASE_NOTES" \
+              --notes "$TRUSTED_RELEASE_NOTICE" \
               --latest \
               --repo "$GITHUB_REPOSITORY"
           else
@@ -233,7 +342,7 @@ jobs:
               dist/LuxaforPresence.dmg.sha256 \
               --target "$GITHUB_SHA" \
               --generate-notes \
-              --notes "$RELEASE_NOTES" \
+              --notes "$TRUSTED_RELEASE_NOTICE" \
               --latest \
               --repo "$GITHUB_REPOSITORY"
           fi

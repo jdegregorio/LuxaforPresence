@@ -4,6 +4,7 @@ All notable changes to LuxaforPresence will be documented here.
 
 ## Unreleased
 
+- Replace ad-hoc GitHub Release publication with protected Developer ID signing, hardened runtime, Apple notarization, ticket stapling, Gatekeeper verification, and an explicit migration path for existing release assets.
 - Normalize equivalent local webhook URLs before comparing output destinations, preventing cosmetic edits from taking the shutdown path.
 - Package the destination comparison fix as version `1.9.2`.
 - Ignore CoreSpeech's persistent background voice-trigger input when deciding whether a user application is using the microphone, preventing LuxaforPresence from keeping its own sampler active after dictation ends.
